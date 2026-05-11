@@ -2,7 +2,10 @@ const jwt = require("jsonwebtoken");
 
 const createToken = (user) => {
   if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET is not configured.");
+    const error = new Error("JWT_SECRET is not configured. Add JWT_SECRET before issuing account tokens.");
+    error.statusCode = 503;
+    error.code = "JWT_SECRET_NOT_CONFIGURED";
+    throw error;
   }
 
   return jwt.sign(

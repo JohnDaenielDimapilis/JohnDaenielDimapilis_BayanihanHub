@@ -15,9 +15,18 @@ body {
   min-width: 320px;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 a {
   color: inherit;
   text-decoration: none;
+}
+
+*:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
 }
 
 button,
@@ -42,5 +51,9 @@ textarea {
 
   .card {
     @apply rounded-3xl border border-white/80 bg-white/90 p-6 shadow-soft backdrop-blur;
+  }
+
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-2xl focus:bg-bayani-ink focus:px-5 focus:py-3 focus:text-sm focus:font-extrabold focus:text-white;
   }
 }

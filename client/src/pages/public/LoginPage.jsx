@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import FormField from "../../components/FormField";
 import Notice from "../../components/Notice";
+import PasswordField from "../../components/PasswordField";
 import { useAuth } from "../../hooks/useAuth";
 import { getAuthValidationErrors } from "../../utils/validateForm";
 
@@ -45,9 +46,9 @@ export default function LoginPage() {
           Sign in to manage events, approvals, reports, donations, and volunteer activity based on your assigned role.
         </p>
       </div>
-      <form className="card grid gap-5" onSubmit={handleSubmit}>
-        <FormField error={errors.email} label="Email address" name="email" onChange={handleChange} type="email" value={form.email} />
-        <FormField error={errors.password} label="Password" name="password" onChange={handleChange} type="password" value={form.password} />
+      <form aria-label="Login form" className="card grid gap-5" onSubmit={handleSubmit}>
+        <FormField autoComplete="email" error={errors.email} label="Email address" name="email" onChange={handleChange} type="email" value={form.email} />
+        <PasswordField autoComplete="current-password" error={errors.password} onChange={handleChange} value={form.password} />
         {message ? <Notice tone="error">{message}</Notice> : null}
         <button className="btn-primary" disabled={isSubmitting} type="submit">
           {isSubmitting ? "Signing in..." : "Login"}

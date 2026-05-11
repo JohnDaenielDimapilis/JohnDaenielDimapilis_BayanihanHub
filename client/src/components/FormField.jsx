@@ -1,5 +1,8 @@
 export default function FormField({ error, label, name, options, rows, type = "text", ...props }) {
+  const errorId = `${name}-error`;
   const commonProps = {
+    "aria-describedby": error ? errorId : undefined,
+    "aria-invalid": Boolean(error),
     className: "input-field",
     id: name,
     name,
@@ -22,7 +25,11 @@ export default function FormField({ error, label, name, options, rows, type = "t
       ) : (
         <input type={type} {...commonProps} />
       )}
-      {error ? <span className="mt-2 block text-xs font-bold text-red-600">{error}</span> : null}
+      {error ? (
+        <span className="mt-2 block text-xs font-bold text-red-600" id={errorId}>
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }

@@ -4,7 +4,8 @@ const express = require("express");
 const helmet = require("helmet");
 const morgan = require("morgan");
 
-const connectDB = require("./config/db");
+const { connectDB, getDatabaseHealth } = require("./config/db");
+const requireDatabase = require("./middleware/databaseMiddleware");
 const { errorHandler, notFound } = require("./middleware/errorMiddleware");
 const achievementRoutes = require("./routes/achievementRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -29,7 +30,13 @@ const allowedOriginPatterns = [
   /^https:\/\/johndaenieldimapilisbayanihanhub(?:-[a-z0-9]+)?\.vercel\.app$/
 ];
 
-connectDB();
+if (process.env.MONGO_URI) {
+  connectDB().catch((error) => {
+    console.error(`Initial database connection failed: ${error.message}`);
+  });
+} else {
+  console.warn("MONGO_URI is not configured. Account creation and database routes require it.");
+}
 
 app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
@@ -65,12 +72,16 @@ app.get("/", (_request, response) => {
 });
 
 app.get("/api/health", (_request, response) => {
+  const database = getDatabaseHealth();
   response.json({
     api: "BayanihanHub",
-    database: process.env.MONGO_URI ? "configured" : "missing MONGO_URI",
+    database: database.configured ? "configured" : "missing MONGO_URI",
+    databaseReadyState: database.readyState,
     timestamp: new Date().toISOString()
   });
 });
+
+app.use("/api", requireDatabase);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);

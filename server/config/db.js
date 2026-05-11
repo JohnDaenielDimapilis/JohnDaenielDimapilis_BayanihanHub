@@ -2,10 +2,14 @@ const mongoose = require("mongoose");
 
 let connectionPromise = null;
 
+mongoose.set("bufferCommands", false);
+
 const connectDB = async () => {
   if (!process.env.MONGO_URI) {
-    console.warn("MONGO_URI is not configured. Database-backed routes will fail until it is set.");
-    return null;
+    const error = new Error("Database is not configured. Add MONGO_URI in Vercel or server/.env before creating accounts.");
+    error.statusCode = 503;
+    error.code = "DATABASE_NOT_CONFIGURED";
+    throw error;
   }
 
   if (mongoose.connection.readyState === 1) {
@@ -22,6 +26,7 @@ const connectDB = async () => {
       .catch((error) => {
         connectionPromise = null;
         console.error(`MongoDB connection error: ${error.message}`);
+        error.statusCode = 503;
         throw error;
       });
   }
@@ -29,4 +34,9 @@ const connectDB = async () => {
   return connectionPromise;
 };
 
-module.exports = connectDB;
+const getDatabaseHealth = () => ({
+  configured: Boolean(process.env.MONGO_URI),
+  readyState: mongoose.connection.readyState
+});
+
+module.exports = { connectDB, getDatabaseHealth };

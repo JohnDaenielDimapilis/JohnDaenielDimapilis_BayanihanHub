@@ -8,6 +8,9 @@ export default function PublicLayout() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#e2f3ed,transparent_36%),linear-gradient(135deg,#fff8ec_0%,#f7faf8_48%,#eef7f3_100%)]">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5">
         <Link className="flex items-center gap-3" to="/">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-bayani-blue to-bayani-green font-display text-lg font-extrabold text-white shadow-soft">
@@ -30,7 +33,7 @@ export default function PublicLayout() {
           </Link>
         </nav>
       </header>
-      <main>
+      <main id="main-content" tabIndex="-1">
         <Outlet />
       </main>
     </div>

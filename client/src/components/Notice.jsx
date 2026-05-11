@@ -6,5 +6,13 @@ export default function Notice({ children, tone = "info" }) {
     warning: "border-amber-200 bg-amber-50 text-amber-700"
   };
 
-  return <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${tones[tone]}`}>{children}</div>;
+  return (
+    <div
+      aria-live={tone === "error" ? "assertive" : "polite"}
+      className={`rounded-2xl border px-4 py-3 text-sm font-semibold leading-6 ${tones[tone]}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      {children}
+    </div>
+  );
 }

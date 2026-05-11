@@ -23,7 +23,11 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <aside
+        aria-label="Dashboard navigation"
         className={`fixed inset-y-0 left-0 z-40 w-80 transform border-r border-slate-100 bg-white p-5 transition lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -38,7 +42,7 @@ export default function DashboardLayout() {
               <p className="text-xs font-bold uppercase tracking-wider text-bayani-green">{user?.role || "user"}</p>
             </div>
           </div>
-          <button className="rounded-xl p-2 text-slate-500 lg:hidden" onClick={() => setIsOpen(false)} type="button">
+          <button aria-label="Close navigation menu" className="rounded-xl p-2 text-slate-500 lg:hidden" onClick={() => setIsOpen(false)} type="button">
             <X size={22} />
           </button>
         </div>
@@ -59,7 +63,7 @@ export default function DashboardLayout() {
       <div className="lg:pl-80">
         <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/90 px-5 py-4 backdrop-blur">
           <div className="flex items-center justify-between gap-4">
-            <button className="rounded-2xl border border-slate-200 p-3 lg:hidden" onClick={() => setIsOpen(true)} type="button">
+            <button aria-label="Open navigation menu" className="rounded-2xl border border-slate-200 p-3 lg:hidden" onClick={() => setIsOpen(true)} type="button">
               <Menu size={20} />
             </button>
             <div>
@@ -71,7 +75,7 @@ export default function DashboardLayout() {
             </span>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-8">
+        <main className="mx-auto max-w-7xl px-5 py-8" id="main-content" tabIndex="-1">
           <Outlet />
         </main>
       </div>

@@ -3,6 +3,7 @@ const { body } = require("express-validator");
 
 const { getProfile, login, register } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
+const { requireJwtSecret } = require("../middleware/configMiddleware");
 const validateRequest = require("../middleware/validateRequest");
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router.post(
     body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 characters.")
   ],
   validateRequest,
+  requireJwtSecret,
   register
 );
 
@@ -25,6 +27,7 @@ router.post(
     body("password").notEmpty().withMessage("Password is required.")
   ],
   validateRequest,
+  requireJwtSecret,
   login
 );
 
