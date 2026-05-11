@@ -1,0 +1,29 @@
+{
+  "name": "johndaenieldimapilis_bayanihanhub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BayanihanHub full-stack MERN application.",
+  "scripts": {
+    "build": "npm --prefix client run build",
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "install:all": "npm install && npm --prefix client install && npm --prefix server install",
+    "start": "npm --prefix server start"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-validator": "^7.3.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.20.0",
+    "morgan": "^1.10.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

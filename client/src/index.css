@@ -1,0 +1,46 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Nunito+Sans:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #122033;
+  background: #f7faf8;
+  font-family: "Nunito Sans", ui-sans-serif, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-2xl bg-bayani-blue px-5 py-3 text-sm font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-bayani-ink transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-bayani-blue focus:outline-none focus:ring-4 focus:ring-blue-100;
+  }
+
+  .input-field {
+    @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-bayani-blue focus:ring-4 focus:ring-blue-100;
+  }
+
+  .card {
+    @apply rounded-3xl border border-white/80 bg-white/90 p-6 shadow-soft backdrop-blur;
+  }
+}
