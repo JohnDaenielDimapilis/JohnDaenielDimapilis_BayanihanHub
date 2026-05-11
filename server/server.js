@@ -21,9 +21,13 @@ dotenv.config();
 const app = express();
 const allowedOrigins = [
   process.env.CLIENT_URL,
+  "https://johndaenieldimapilisbayanihanhub.vercel.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173"
 ].filter(Boolean);
+const allowedOriginPatterns = [
+  /^https:\/\/johndaenieldimapilisbayanihanhub(?:-[a-z0-9]+)?\.vercel\.app$/
+];
 
 connectDB();
 
@@ -33,7 +37,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      const isAllowedOrigin =
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        allowedOriginPatterns.some((pattern) => pattern.test(origin));
+
+      if (isAllowedOrigin) {
         return callback(null, true);
       }
 
