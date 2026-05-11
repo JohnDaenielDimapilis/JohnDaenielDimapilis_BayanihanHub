@@ -2,6 +2,7 @@ import { LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import BrandLogo from "../components/BrandLogo";
 import { useAuth } from "../hooks/useAuth";
 import { navigationByRole } from "../routes/navigation";
 
@@ -33,14 +34,9 @@ export default function DashboardLayout() {
         }`}
       >
         <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-bayani-blue to-bayani-green font-display text-lg font-extrabold text-white">
-              BH
-            </span>
-            <div>
-              <p className="font-display text-lg font-extrabold text-bayani-ink">BayanihanHub</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-bayani-green">{user?.role || "user"}</p>
-            </div>
+          <div className="grid gap-2">
+            <BrandLogo size="sidebar" />
+            <p className="pl-2 text-xs font-bold uppercase tracking-wider text-bayani-green">{user?.role || "user"} workspace</p>
           </div>
           <button aria-label="Close navigation menu" className="rounded-xl p-2 text-slate-500 lg:hidden" onClick={() => setIsOpen(false)} type="button">
             <X size={22} />
