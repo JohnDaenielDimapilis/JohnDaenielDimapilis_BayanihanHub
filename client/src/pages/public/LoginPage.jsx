@@ -5,6 +5,7 @@ import FormField from "../../components/FormField";
 import Notice from "../../components/Notice";
 import PasswordField from "../../components/PasswordField";
 import { useAuth } from "../../hooks/useAuth";
+import { demoAccounts } from "../../utils/demoAccounts";
 import { getAuthValidationErrors } from "../../utils/validateForm";
 
 export default function LoginPage() {
@@ -15,8 +16,17 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  // Keeps form state synchronized with the user's typed input.
   const handleChange = (event) => setForm({ ...form, [event.target.name]: event.target.value });
 
+  // Fills the login form with a selected demo account credential set.
+  const handleDemoFill = (account) => {
+    setForm({ email: account.email, password: account.password });
+    setErrors({});
+    setMessage(`${account.label} credentials loaded. Click Login to continue.`);
+  };
+
+  // Validates the form and redirects authenticated users to the correct role dashboard.
   const handleSubmit = async (event) => {
     event.preventDefault();
     const nextErrors = getAuthValidationErrors(form);
@@ -45,6 +55,27 @@ export default function LoginPage() {
         <p className="mt-5 text-lg leading-8 text-slate-600">
           Sign in to manage events, approvals, reports, donations, and volunteer activity based on your assigned role.
         </p>
+        <div className="mt-8 rounded-3xl border border-blue-100 bg-white/80 p-5 shadow-soft backdrop-blur">
+          <h2 className="font-display text-xl font-extrabold text-bayani-ink">Demo login credentials</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+            Use these dummy accounts to inspect each role dashboard while MongoDB is not configured.
+          </p>
+          <div className="mt-5 grid gap-3">
+            {demoAccounts.map((account) => (
+              <button
+                aria-label={`Use ${account.label} credentials`}
+                className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100"
+                key={account.email}
+                onClick={() => handleDemoFill(account)}
+                type="button"
+              >
+                <span className="block text-sm font-extrabold text-bayani-blue">{account.label}</span>
+                <span className="mt-1 block text-sm font-semibold text-slate-700">Email: {account.email}</span>
+                <span className="mt-1 block text-sm font-semibold text-slate-700">Password: {account.password}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <form aria-label="Login form" className="card grid gap-5" onSubmit={handleSubmit}>
         <FormField autoComplete="email" error={errors.email} label="Email address" name="email" onChange={handleChange} type="email" value={form.email} />

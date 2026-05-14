@@ -26,6 +26,26 @@ BayanihanHub is a professional full-stack MERN web application based on the prop
 - Staff: creates and updates events, submits events for approval, monitors participants, creates fundraisers, tracks donations and feedback, and submits reports.
 - User: registers, logs in, views approved events, joins events, donates to approved fundraisers, submits feedback, and views achievements.
 
+## Demo Accounts
+
+Use these dummy accounts to review each dashboard before MongoDB is configured:
+
+```txt
+Admin
+Email: admin@bayanihanhub.test
+Password: Admin@123
+
+Staff
+Email: staff@bayanihanhub.test
+Password: Staff@123
+
+User
+Email: user@bayanihanhub.test
+Password: User@123
+```
+
+These accounts are local frontend demo sessions. Real account creation and persistent login still require `MONGO_URI` and `JWT_SECRET`.
+
 ## Local Installation
 
 1. Clone the repository.
