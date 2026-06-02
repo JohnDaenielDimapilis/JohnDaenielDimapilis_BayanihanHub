@@ -15,6 +15,7 @@ import reportRoutes from "./routes/reportRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
 import securityRoutes from "./routes/securityRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import User from "./models/User.js";
 
 dotenv.config();
 
@@ -51,8 +52,29 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
+async function seedMemoryDemoAccounts() {
+  if (process.env.BAYANIHAN_MEMORY_DB !== "true") return;
+
+  const users = [
+    { name: "Maria Santos", email: "admin@bayanihanhub.test", password: "Password123", role: "Admin" },
+    { name: "Leo Dela Cruz", email: "staff@bayanihanhub.test", password: "Password123", role: "Staff" },
+    { name: "Ana Reyes", email: "user@bayanihanhub.test", password: "Password123", role: "User" }
+  ];
+
+  for (const user of users) {
+    const existing = await User.findOne({ email: user.email });
+    if (!existing) {
+      await User.create({ ...user, isActive: true, privacyConsentAt: new Date() });
+    }
+  }
+
+  console.log("Seeded in-memory demo accounts:");
+  users.forEach((user) => console.log(`${user.role}: ${user.email} / Password123`));
+}
+
 connectDB()
-  .then(() => {
+  .then(async () => {
+    await seedMemoryDemoAccounts();
     app.listen(PORT, () => {
       console.log(`✅ BayanihanHub server running on port ${PORT} (${NODE_ENV})`);
       console.log(`📍 API: http://localhost:${PORT}/api`);
