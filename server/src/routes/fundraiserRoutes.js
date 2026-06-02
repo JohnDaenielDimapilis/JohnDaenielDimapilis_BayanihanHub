@@ -1,6 +1,7 @@
 import express from "express";
 import {
   approveFundraiser,
+  closeFundraiser,
   createFundraiser,
   deleteFundraiser,
   getFundraiserById,
@@ -20,5 +21,6 @@ router.put("/:id", authorize("Admin", "Staff"), updateFundraiser);
 router.delete("/:id", authorize("Admin", "Staff"), deleteFundraiser);
 router.patch("/:id/approve", authorize("Admin"), approveFundraiser);
 router.patch("/:id/reject", authorize("Admin"), rejectFundraiser);
+router.patch("/:id/close", authorize("Admin", "Staff"), closeFundraiser);
 
 export default router;

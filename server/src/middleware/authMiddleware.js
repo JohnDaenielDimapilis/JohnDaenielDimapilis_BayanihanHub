@@ -18,6 +18,24 @@ export async function protect(req, res, next) {
       return res.status(401).json({ message: "Not authorized. User not found." });
     }
 
+    if (req.user.isActive === false) {
+      await createLog({
+        userId: req.user._id,
+        role: req.user.role,
+        action: "Inactive Account Access Blocked",
+        module: "Security",
+        status: "Failed",
+        details: {
+          method: req.method,
+          path: req.originalUrl,
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent"),
+          reason: "Account is inactive."
+        }
+      });
+      return res.status(403).json({ message: "Account is inactive." });
+    }
+
     next();
   } catch (error) {
     res.status(401).json({ message: "Not authorized. Invalid token." });
@@ -33,7 +51,13 @@ export function authorize(...roles) {
         action: "Unauthorized Access",
         module: "Security",
         status: "Failed",
-        details: { method: req.method, path: req.originalUrl }
+        details: {
+          method: req.method,
+          path: req.originalUrl,
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent"),
+          reason: `Role ${req.user.role} is not allowed for this route.`
+        }
       });
       return res.status(403).json({ message: "Access denied. Role not authorized." });
     }

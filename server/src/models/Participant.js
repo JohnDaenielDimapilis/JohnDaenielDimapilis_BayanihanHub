@@ -6,12 +6,12 @@ const participantSchema = new mongoose.Schema(
     eventId: { type: mongoose.Schema.Types.ObjectId, ref: "Event", required: true },
     attendanceStatus: {
       type: String,
-      enum: ["Pending", "Present", "Absent"],
+      enum: ["Pending", "Present", "Absent", "No-show", "Verified"],
       default: "Pending"
     },
     participationStatus: {
       type: String,
-      enum: ["Joined", "Completed", "Cancelled"],
+      enum: ["Joined", "Waitlisted", "Completed", "Cancelled"],
       default: "Joined"
     },
     joinedAt: { type: Date, default: Date.now }

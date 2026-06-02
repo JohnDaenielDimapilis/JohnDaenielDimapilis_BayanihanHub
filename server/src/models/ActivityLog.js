@@ -9,6 +9,7 @@ const activityLogSchema = new mongoose.Schema(
     affectedRecord: { type: mongoose.Schema.Types.ObjectId },
     outcome: { type: String, enum: ["success", "failure"], default: "success" },
     ipAddress: { type: String, trim: true },
+    userAgent: { type: String, trim: true },
     remarks: { type: String, trim: true }
   },
   { timestamps: true }

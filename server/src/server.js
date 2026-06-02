@@ -51,9 +51,6 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-app.use(notFound);
-app.use(errorHandler);
-
 connectDB()
   .then(() => {
     app.listen(PORT, () => {

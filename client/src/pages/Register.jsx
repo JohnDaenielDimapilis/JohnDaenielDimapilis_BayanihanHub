@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "User" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", privacyConsent: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -16,6 +16,11 @@ export default function Register() {
     setError("");
     setLoading(true);
     try {
+      if (!form.privacyConsent) {
+        setError("Please agree to the privacy notice before creating an account.");
+        setLoading(false);
+        return;
+      }
       await register(form);
       navigate("/");
     } catch (err) {
@@ -113,14 +118,18 @@ export default function Register() {
               <p className="form-hint">Must be at least 8 characters</p>
             </div>
 
-            <div className="form-field">
-              <label className="form-label">Role</label>
-              <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                <option value="User">User</option>
-                <option value="Staff">Staff</option>
-                <option value="Admin">Admin</option>
-              </select>
-            </div>
+            <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm text-surface-700">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={form.privacyConsent}
+                onChange={(e) => setForm({ ...form, privacyConsent: e.target.checked })}
+                required
+              />
+              <span>
+                I agree that BayanihanHub may store my account, event participation, donation, feedback, and achievement records for foundation operations, reporting, and audit purposes.
+              </span>
+            </label>
 
             <button type="submit" className="btn-primary w-full h-11" disabled={loading}>
               {loading ? (

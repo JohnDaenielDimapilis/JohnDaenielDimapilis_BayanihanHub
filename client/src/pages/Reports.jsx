@@ -26,7 +26,7 @@ export default function Reports() {
       .finally(() => setLoading(false));
   }, []);
 
-  const donationTotal = report?.donations?.reduce((sum, item) => sum + item.total, 0) || 0;
+  const donationTotal = report?.totalDonationAmount ?? report?.donations?.reduce((sum, item) => sum + item.total, 0) ?? 0;
 
   const eventStatusData = (report?.events || []).map((e) => ({
     label: e._id || e.status || "Unknown",
@@ -83,6 +83,15 @@ export default function Reports() {
           )}
         </div>
       </div>
+
+      {!loading && report?.qualityMetrics && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Attendance Rate" value={`${report.qualityMetrics.attendanceRate}%`} icon={Users} color="green" />
+          <StatCard label="No-show Rate" value={`${report.qualityMetrics.noShowRate}%`} icon={Users} color="red" />
+          <StatCard label="Pending Donations" value={report.qualityMetrics.pendingDonationCount ?? 0} icon={HandCoins} color="amber" />
+          <StatCard label="Beneficiaries Served" value={report.qualityMetrics.beneficiariesServed ?? 0} icon={Users} color="blue" />
+        </div>
+      )}
 
       {report?.events && report.events.length > 0 && (
         <div className="card-padded">

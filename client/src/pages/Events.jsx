@@ -53,7 +53,11 @@ export default function Events() {
   async function doApproval(id, status) {
     try {
       const endpoint = status === "Approved" ? `/events/${id}/approve` : `/events/${id}/reject`;
-      await api(endpoint, { method: "PATCH" });
+      const body = status === "Rejected"
+        ? { rejectionReason: window.prompt("Reason for rejecting this event:") }
+        : {};
+      if (status === "Rejected" && !body.rejectionReason) return;
+      await api(endpoint, { method: "PATCH", body: JSON.stringify(body) });
       toast.success(`Event ${status}`);
       load();
     } catch (err) {
@@ -84,7 +88,7 @@ export default function Events() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-surface-900 truncate">{row.title}</p>
-            <p className="text-xs text-surface-500">{row.type}</p>
+            <p className="text-xs text-surface-500">{row.eventType || row.type}</p>
           </div>
         </div>
       ),
@@ -144,9 +148,9 @@ export default function Events() {
               </button>
             </>
           )}
-          {user.role === "User" && row.status === "Approved" && (
+          {user.role === "User" && ["Approved", "Published", "Open", "Full"].includes(row.status) && (
             <button className="btn-primary btn-xs" onClick={() => join(row._id)}>
-              Join
+              {row.status === "Full" ? "Waitlist" : "Join"}
             </button>
           )}
         </div>
@@ -215,10 +219,10 @@ export default function Events() {
 
       <ConfirmDialog
         open={!!confirm}
-        title={`${confirm?.action === "approved" ? "Approve" : "Reject"} Event?`}
-        message={`Are you sure you want to ${confirm?.action === "approved" ? "approve" : "reject"} "${confirm?.title}"?`}
-        confirmLabel={confirm?.action === "approved" ? "Approve" : "Reject"}
-        variant={confirm?.action === "approved" ? "primary" : "danger"}
+        title={`${confirm?.action === "Approved" ? "Approve" : "Reject"} Event?`}
+        message={`Are you sure you want to ${confirm?.action === "Approved" ? "approve" : "reject"} "${confirm?.title}"?`}
+        confirmLabel={confirm?.action === "Approved" ? "Approve" : "Reject"}
+        variant={confirm?.action === "Approved" ? "primary" : "danger"}
         onConfirm={() => { doApproval(confirm.id, confirm.action); setConfirm(null); }}
         onCancel={() => setConfirm(null)}
       />

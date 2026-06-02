@@ -44,9 +44,9 @@ export default function Accounts() {
     try {
       await api(`/accounts/${account._id}`, {
         method: "PUT",
-        body: JSON.stringify({ isActive: !account.isActive }),
+        body: JSON.stringify({ isActive: !isActive(account) }),
       });
-      toast.success(`Account ${account.isActive ? "deactivated" : "activated"}`);
+      toast.success(`Account ${isActive(account) ? "deactivated" : "activated"}`);
       load();
     } catch (err) { toast.error(err.message); }
   }
@@ -57,7 +57,8 @@ export default function Accounts() {
     User: "badge-neutral",
   };
 
-  const activeCount = accounts.filter((a) => a.isActive).length;
+  const isActive = (account) => account.isActive !== false;
+  const activeCount = accounts.filter(isActive).length;
 
   const columns = [
     {
@@ -66,11 +67,11 @@ export default function Accounts() {
       accessor: "name",
       render: (row) => (
         <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${row.isActive ? "bg-brand-50 text-brand-600" : "bg-surface-100 text-surface-400"}`}>
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isActive(row) ? "bg-brand-50 text-brand-600" : "bg-surface-100 text-surface-400"}`}>
             {row.name?.[0]?.toUpperCase() || "?"}
           </div>
           <div className="min-w-0">
-            <p className={`text-sm font-semibold ${row.isActive ? "text-surface-900" : "text-surface-400"}`}>{row.name}</p>
+            <p className={`text-sm font-semibold ${isActive(row) ? "text-surface-900" : "text-surface-400"}`}>{row.name}</p>
             <p className="text-xs text-surface-500 truncate">{row.email}</p>
           </div>
         </div>
@@ -85,8 +86,8 @@ export default function Accounts() {
     {
       key: "status",
       header: "Status",
-      accessor: (row) => (row.isActive ? "active" : "inactive"),
-      render: (row) => <StatusBadge value={row.isActive ? "active" : "inactive"} />,
+      accessor: (row) => (isActive(row) ? "active" : "inactive"),
+      render: (row) => <StatusBadge value={isActive(row) ? "active" : "inactive"} />,
     },
     {
       key: "actions",
@@ -96,10 +97,10 @@ export default function Accounts() {
       render: (row) => (
         <div className="flex justify-end">
           <button
-            className={`btn-sm ${row.isActive ? "btn-outline" : "btn-primary"}`}
+            className={`btn-sm ${isActive(row) ? "btn-outline" : "btn-primary"}`}
             onClick={() => setConfirm(row)}
           >
-            {row.isActive ? "Deactivate" : "Activate"}
+            {isActive(row) ? "Deactivate" : "Activate"}
           </button>
         </div>
       ),
@@ -176,10 +177,10 @@ export default function Accounts() {
 
       <ConfirmDialog
         open={!!confirm}
-        title={`${confirm?.isActive ? "Deactivate" : "Activate"} Account?`}
-        message={`Are you sure you want to ${confirm?.isActive ? "deactivate" : "activate"} the account for "${confirm?.name}"?${confirm?.isActive ? " They will no longer be able to sign in." : ""}`}
-        confirmLabel={confirm?.isActive ? "Deactivate" : "Activate"}
-        variant={confirm?.isActive ? "danger" : "primary"}
+        title={`${confirm && isActive(confirm) ? "Deactivate" : "Activate"} Account?`}
+        message={`Are you sure you want to ${confirm && isActive(confirm) ? "deactivate" : "activate"} the account for "${confirm?.name}"?${confirm && isActive(confirm) ? " They will no longer be able to sign in." : ""}`}
+        confirmLabel={confirm && isActive(confirm) ? "Deactivate" : "Activate"}
+        variant={confirm && isActive(confirm) ? "danger" : "primary"}
         onConfirm={() => { toggleActive(confirm); setConfirm(null); }}
         onCancel={() => setConfirm(null)}
       />

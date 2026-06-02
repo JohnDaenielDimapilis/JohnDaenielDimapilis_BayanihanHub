@@ -10,8 +10,8 @@ export async function joinEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (event.status !== "Approved") {
-      return res.status(400).json({ message: "Users can only join approved events." });
+    if (!["Approved", "Published", "Open", "Full"].includes(event.status)) {
+      return res.status(400).json({ message: "Users can only join approved or open events." });
     }
 
     const existingParticipant = await Participant.findOne({
@@ -28,7 +28,9 @@ export async function joinEvent(req, res) {
       participationStatus: { $ne: "Cancelled" }
     });
 
-    if (participantCount >= event.participantLimit) {
+    const isFull = participantCount >= event.participantLimit;
+
+    if (isFull && !event.waitlistEnabled) {
       return res.status(400).json({ message: "Event participant limit has been reached." });
     }
 
@@ -36,21 +38,33 @@ export async function joinEvent(req, res) {
       userId: req.user._id,
       eventId: event._id,
       attendanceStatus: "Pending",
-      participationStatus: "Joined",
+      participationStatus: isFull ? "Waitlisted" : "Joined",
       joinedAt: new Date()
     });
+
+    if (isFull && event.status !== "Full") {
+      event.status = "Full";
+      await event.save();
+    }
 
     await createLog({
       userId: req.user._id,
       role: req.user.role,
-      action: "Joined Event",
+      action: isFull ? "Joined Event Waitlist" : "Joined Event",
       module: "Participant",
       status: "Success",
-      details: { recordId: participant._id, eventId: event._id, recordOwner: event.createdBy }
+      details: {
+        recordId: participant._id,
+        eventId: event._id,
+        recordOwner: event.createdBy,
+        newValue: { participationStatus: participant.participationStatus },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent")
+      }
     });
 
     res.status(201).json({
-      message: "Event joined successfully.",
+      message: isFull ? "Event is full. You have been added to the waitlist." : "Event joined successfully.",
       participant
     });
   } catch (error) {
@@ -109,6 +123,22 @@ export async function updateParticipantStatus(req, res) {
     if (participationStatus) participant.participationStatus = participationStatus;
 
     await participant.save();
+
+    await createLog({
+      userId: req.user._id,
+      role: req.user.role,
+      action: "Participant Status Updated",
+      module: "Participant",
+      status: "Success",
+      details: {
+        recordId: participant._id,
+        eventId: participant.eventId._id,
+        recordOwner: participant.eventId.createdBy,
+        newValue: { attendanceStatus: participant.attendanceStatus, participationStatus: participant.participationStatus },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent")
+      }
+    });
 
     res.status(200).json({
       message: "Participant status updated successfully.",

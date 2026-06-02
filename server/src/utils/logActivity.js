@@ -9,6 +9,7 @@ export async function logActivity(req, { action, module, affectedRecord, outcome
     affectedRecord,
     outcome,
     ipAddress: req.ip,
+    userAgent: req.get?.("user-agent"),
     remarks
   });
 }

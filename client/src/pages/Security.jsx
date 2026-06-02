@@ -38,7 +38,7 @@ export default function Security() {
       accessor: (row) => row.user?.name || "Guest",
       render: (row) => (
         <div className="flex items-center gap-2.5">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 ${row.outcome === "failed" ? "bg-danger-50 text-danger-600" : "bg-surface-100 text-surface-600"}`}>
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 ${row.outcome === "failure" ? "bg-danger-50 text-danger-600" : "bg-surface-100 text-surface-600"}`}>
             {(row.user?.name || "G")[0].toUpperCase()}
           </div>
           <span className="text-sm font-medium text-surface-900">{row.user?.name || "Guest"}</span>
@@ -57,7 +57,7 @@ export default function Security() {
       accessor: "action",
       render: (row) => (
         <div className="flex items-center gap-2">
-          {(row.outcome === "failed" || row.action?.toLowerCase().includes("unauthorized")) && (
+          {(row.outcome === "failure" || row.action?.toLowerCase().includes("unauthorized")) && (
             <AlertTriangle size={13} className="text-danger-500 shrink-0" />
           )}
           <span className="text-sm text-surface-700">{row.action}</span>

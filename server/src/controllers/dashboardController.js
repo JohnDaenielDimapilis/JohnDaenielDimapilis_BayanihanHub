@@ -6,7 +6,8 @@ import Participant from "../models/Participant.js";
 
 export async function dashboard(req, res, next) {
   try {
-    const filterForUsers = req.user.role === "User" ? { status: "Approved" } : {};
+    const eventFilterForUsers = req.user.role === "User" ? { status: { $in: ["Approved", "Published", "Open", "Full"] } } : {};
+    const fundraiserFilterForUsers = req.user.role === "User" ? { status: { $in: ["Approved", "Closed"] } } : {};
     const [
       events,
       pendingEvents,
@@ -16,11 +17,14 @@ export async function dashboard(req, res, next) {
       participants,
       achievements
     ] = await Promise.all([
-      Event.countDocuments(filterForUsers),
+      Event.countDocuments(eventFilterForUsers),
       Event.countDocuments({ status: "Pending" }),
       Fundraiser.countDocuments({ status: "Pending" }),
-      Fundraiser.countDocuments(filterForUsers),
-      Donation.aggregate([{ $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }]),
+      Fundraiser.countDocuments(fundraiserFilterForUsers),
+      Donation.aggregate([
+        { $match: { donationStatus: "Verified" } },
+        { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }
+      ]),
       Participant.countDocuments(req.user.role === "User" ? { userId: req.user._id } : {}),
       Achievement.countDocuments(req.user.role === "User" ? { userId: req.user._id } : {})
     ]);

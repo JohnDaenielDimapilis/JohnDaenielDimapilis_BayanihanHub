@@ -1,6 +1,8 @@
 import express from "express";
 import {
   approveEvent,
+  cancelEvent,
+  completeEvent,
   createEvent,
   deleteEvent,
   getEventById,
@@ -20,5 +22,7 @@ router.put("/:id", authorize("Admin", "Staff"), updateEvent);
 router.delete("/:id", authorize("Admin", "Staff"), deleteEvent);
 router.patch("/:id/approve", authorize("Admin"), approveEvent);
 router.patch("/:id/reject", authorize("Admin"), rejectEvent);
+router.patch("/:id/cancel", authorize("Admin", "Staff"), cancelEvent);
+router.patch("/:id/complete", authorize("Admin", "Staff"), completeEvent);
 
 export default router;

@@ -50,13 +50,17 @@ export default function Fundraisers() {
   async function doApproval(id, status) {
     try {
       const endpoint = status === "Approved" ? `/fundraisers/${id}/approve` : `/fundraisers/${id}/reject`;
-      await api(endpoint, { method: "PATCH" });
+      const body = status === "Rejected"
+        ? { rejectionReason: window.prompt("Reason for rejecting this fundraiser:") }
+        : {};
+      if (status === "Rejected" && !body.rejectionReason) return;
+      await api(endpoint, { method: "PATCH", body: JSON.stringify(body) });
       toast.success(`Fundraiser ${status}`);
       load();
     } catch (err) { toast.error(err.message); }
   }
 
-  const statusMap = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+  const statusMap = { pending: "Pending", approved: "Approved", closed: "Closed", rejected: "Rejected" };
   const capitalizedFilter = filter === "all" ? "all" : statusMap[filter];
   const filtered = filter === "all" ? items : items.filter((i) => i.status === capitalizedFilter);
 
@@ -64,6 +68,7 @@ export default function Fundraisers() {
     all: items.length,
     pending: items.filter((i) => i.status === "Pending").length,
     approved: items.filter((i) => i.status === "Approved").length,
+    closed: items.filter((i) => i.status === "Closed").length,
     rejected: items.filter((i) => i.status === "Rejected").length,
   };
 
@@ -118,8 +123,8 @@ export default function Fundraisers() {
             return (
               <div
                 key={item._id}
-                onClick={() => item.status === "Approved" && user.role === "User" ? navigate(`/fundraisers/${item._id}`) : null}
-                className={item.status === "Approved" && user.role === "User" ? "cursor-pointer" : ""}
+                onClick={() => ["Approved", "Closed"].includes(item.status) && user.role === "User" ? navigate(`/fundraisers/${item._id}`) : null}
+                className={["Approved", "Closed"].includes(item.status) && user.role === "User" ? "cursor-pointer" : ""}
               >
                 <article className="card-padded flex flex-col gap-4 hover:shadow-soft transition-shadow h-full">
                   <div className="flex items-start justify-between">
@@ -159,9 +164,9 @@ export default function Fundraisers() {
                     </div>
                   )}
 
-                  {item.status === "Approved" && user.role === "User" && (
+                  {["Approved", "Closed"].includes(item.status) && user.role === "User" && (
                     <button className="btn-primary btn-sm w-full mt-2" onClick={() => navigate(`/fundraisers/${item._id}`)}>
-                      View & Donate
+                      {item.status === "Closed" ? "View Report" : "View & Donate"}
                     </button>
                   )}
                 </article>
@@ -187,8 +192,8 @@ export default function Fundraisers() {
               <input type="date" className="input" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} required />
             </FormField>
           </div>
-          <FormField label="Description">
-            <textarea className="input" placeholder="Describe the campaign..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <FormField label="Description" required>
+            <textarea className="input" placeholder="Describe the campaign..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
           </FormField>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>

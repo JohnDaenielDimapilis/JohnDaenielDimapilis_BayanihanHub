@@ -2,6 +2,7 @@ import { ArrowLeft, Gift, Target, Calendar, User, DollarSign } from "lucide-reac
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
+import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ui/ProgressBar.jsx";
 import Modal from "../components/ui/Modal.jsx";
 import FormField from "../components/ui/FormField.jsx";
@@ -19,7 +20,7 @@ export default function FundraiserDetail() {
   const [loading, setLoading] = useState(true);
   const [donating, setDonating] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ amount: "", donationType: "Cash", paymentReference: "" });
+  const [form, setForm] = useState({ amount: "", donationType: "Cash", paymentReference: "", donorAnonymous: false });
 
   async function loadData() {
     try {
@@ -59,11 +60,12 @@ export default function FundraiserDetail() {
           donationType: form.donationType,
           donationPurpose: fundraiser.purpose,
           paymentReference: form.paymentReference,
+          donorAnonymous: form.donorAnonymous,
         }),
       });
 
-      toast.success("Thank you for your donation!");
-      setForm({ amount: "", donationType: "Cash", paymentReference: "" });
+      toast.success("Donation submitted for verification");
+      setForm({ amount: "", donationType: "Cash", paymentReference: "", donorAnonymous: false });
       setModalOpen(false);
       loadData();
     } catch (err) {
@@ -225,7 +227,7 @@ export default function FundraiserDetail() {
 
       {/* Donations Section */}
       <div className="card-padded">
-        <h2 className="text-xl font-bold text-surface-900 mb-6">Recent Donations ({donations.length})</h2>
+        <h2 className="text-xl font-bold text-surface-900 mb-6">Donation Records ({donations.length})</h2>
 
         {donations.length === 0 ? (
           <div className="text-center py-8 text-surface-500">
@@ -242,7 +244,7 @@ export default function FundraiserDetail() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-surface-900">
-                        {donation.donor?.name || "Anonymous Donor"}
+                        {donation.donorAnonymous ? "Anonymous Donor" : donation.donor?.name || "Anonymous Donor"}
                       </p>
                       <p className="text-xs text-surface-500">
                         {new Date(donation.donationDate).toLocaleDateString()}
@@ -257,6 +259,9 @@ export default function FundraiserDetail() {
                   <p className="text-xs text-surface-500 badge badge-neutral">
                     {donation.donationType}
                   </p>
+                  <div className="mt-1">
+                    <StatusBadge value={donation.donationStatus} />
+                  </div>
                 </div>
               </div>
             ))}
@@ -320,6 +325,16 @@ export default function FundraiserDetail() {
             />
           </FormField>
 
+          <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm text-surface-700">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.donorAnonymous}
+              onChange={(e) => setForm({ ...form, donorAnonymous: e.target.checked })}
+            />
+            <span>Hide my name from public fundraising pages.</span>
+          </label>
+
           <div className="bg-surface-50 rounded-lg p-4 border border-surface-200">
             <p className="text-sm text-surface-600">
               <strong>Your donation:</strong> PHP {form.amount ? Number(form.amount).toLocaleString() : "0.00"}
@@ -331,7 +346,7 @@ export default function FundraiserDetail() {
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={donating || !form.amount}>
-              {donating ? "Processing..." : "Confirm Donation"}
+              {donating ? "Submitting..." : "Submit for Verification"}
             </button>
           </div>
         </form>

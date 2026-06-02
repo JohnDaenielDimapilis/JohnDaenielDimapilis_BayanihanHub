@@ -28,15 +28,17 @@ export default function Dashboard() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const normalizeStatus = (status) => String(status || "").toLowerCase();
 
   const eventStatusData = events.length ? [
-    { label: "Approved", value: events.filter((e) => e.status === "approved").length, color: "#22c55e" },
-    { label: "Pending", value: events.filter((e) => e.status === "pending").length, color: "#f59e0b" },
-    { label: "Rejected", value: events.filter((e) => e.status === "rejected").length, color: "#ef4444" },
+    { label: "Approved", value: events.filter((e) => normalizeStatus(e.status) === "approved").length, color: "#22c55e" },
+    { label: "Pending", value: events.filter((e) => normalizeStatus(e.status) === "pending").length, color: "#f59e0b" },
+    { label: "Rejected", value: events.filter((e) => normalizeStatus(e.status) === "rejected").length, color: "#ef4444" },
+    { label: "Completed", value: events.filter((e) => normalizeStatus(e.status) === "completed").length, color: "#3b82f6" },
   ].filter((d) => d.value > 0) : [];
 
   const topFundraisers = fundraisers
-    .filter((f) => f.status === "approved")
+    .filter((f) => ["approved", "closed"].includes(normalizeStatus(f.status)))
     .sort((a, b) => b.raisedAmount - a.raisedAmount)
     .slice(0, 5);
 
@@ -112,14 +114,14 @@ export default function Dashboard() {
             <div className="space-y-3">
               {recentEvents.map((event) => (
                 <div key={event._id} className="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-50 transition-colors">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${event.status === "approved" ? "bg-success-50 text-success-600" : event.status === "pending" ? "bg-warning-50 text-warning-600" : "bg-danger-50 text-danger-600"}`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${normalizeStatus(event.status) === "approved" ? "bg-success-50 text-success-600" : normalizeStatus(event.status) === "pending" ? "bg-warning-50 text-warning-600" : "bg-danger-50 text-danger-600"}`}>
                     <CalendarDays size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-surface-900 truncate">{event.title}</p>
                     <p className="text-xs text-surface-500">{event.location} · {new Date(event.date).toLocaleDateString()}</p>
                   </div>
-                  <span className={`badge ${event.status === "approved" ? "badge-success" : event.status === "pending" ? "badge-warning" : "badge-danger"}`}>
+                  <span className={`badge ${normalizeStatus(event.status) === "approved" ? "badge-success" : normalizeStatus(event.status) === "pending" ? "badge-warning" : "badge-danger"}`}>
                     {event.status}
                   </span>
                 </div>

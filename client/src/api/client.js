@@ -52,7 +52,10 @@ export const fundraisersApi = {
 // Donations endpoints
 export const donationsApi = {
   getAll: () => api("/donations"),
-  create: (payload) => api("/donations", { method: "POST", body: JSON.stringify(payload) })
+  create: (payload) => api("/donations", { method: "POST", body: JSON.stringify(payload) }),
+  verify: (id, payload = {}) => api(`/donations/${id}/verify`, { method: "PATCH", body: JSON.stringify(payload) }),
+  reject: (id, payload) => api(`/donations/${id}/reject`, { method: "PATCH", body: JSON.stringify(payload) }),
+  refund: (id, payload) => api(`/donations/${id}/refund`, { method: "PATCH", body: JSON.stringify(payload) })
 };
 
 // Participants endpoints

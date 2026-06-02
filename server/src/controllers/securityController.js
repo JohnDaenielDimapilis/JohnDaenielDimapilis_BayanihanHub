@@ -5,10 +5,10 @@ import { logActivity } from "../utils/logActivity.js";
 export async function securitySummary(req, res, next) {
   try {
     const [failedLogins, unauthorizedAttempts, inactiveUsers, roleChanges] = await Promise.all([
-      ActivityLog.countDocuments({ module: "Security", action: /Failed login/i }),
-      ActivityLog.countDocuments({ module: "Security", action: /Unauthorized/i }),
+      ActivityLog.countDocuments({ action: /login failed|failed login/i }),
+      ActivityLog.countDocuments({ action: /Unauthorized/i }),
       User.countDocuments({ isActive: false }),
-      ActivityLog.countDocuments({ module: "Account Management", action: /Updated user account/i })
+      ActivityLog.countDocuments({ action: /Updated user account|role/i })
     ]);
 
     await logActivity(req, { action: "Reviewed security dashboard", module: "Security" });

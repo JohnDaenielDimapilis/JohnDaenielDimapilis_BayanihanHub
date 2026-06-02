@@ -35,13 +35,13 @@ export default function Logs() {
     {
       key: "user",
       header: "User",
-      accessor: (row) => row.user?.name || "Guest",
+      accessor: (row) => row.userId?.name || "Guest",
       render: (row) => (
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-full bg-surface-100 text-surface-600 flex items-center justify-center text-2xs font-bold shrink-0">
-            {(row.user?.name || "G")[0].toUpperCase()}
+            {(row.userId?.name || "G")[0].toUpperCase()}
           </div>
-          <span className="text-sm font-medium text-surface-900">{row.user?.name || "Guest"}</span>
+          <span className="text-sm font-medium text-surface-900">{row.userId?.name || "Guest"}</span>
         </div>
       ),
     },
@@ -68,8 +68,23 @@ export default function Logs() {
     {
       key: "outcome",
       header: "Outcome",
-      accessor: "outcome",
-      render: (row) => <StatusBadge value={row.outcome} />,
+      accessor: (row) => row.outcome || row.status,
+      render: (row) => <StatusBadge value={row.outcome || row.status} />,
+    },
+    {
+      key: "reason",
+      header: "Reason / Record",
+      accessor: (row) => row.reason || row.details?.reason || row.details?.rejectionReason || row.relatedRecordId || "",
+      render: (row) => (
+        <div className="max-w-[260px]">
+          <p className="text-xs text-surface-600 truncate">
+            {row.reason || row.details?.reason || row.details?.rejectionReason || row.details?.refundReason || "No remarks"}
+          </p>
+          {row.relatedRecordId && (
+            <code className="text-2xs text-surface-400">{String(row.relatedRecordId).slice(-8)}</code>
+          )}
+        </div>
+      ),
     },
   ];
 
