@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BayanihanHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body>
+  <section id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="brand auth-brand">
+        <div class="brand-mark">BH</div>
+        <div>
+          <h1>BayanihanHub</h1>
+          <p>Secure role-based access</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs" role="tablist" aria-label="Authentication">
+        <button class="auth-tab active" data-auth-tab="login" type="button">Login</button>
+        <button class="auth-tab" data-auth-tab="register" type="button">Register</button>
+      </div>
+
+      <form id="loginForm" class="auth-form active" method="post" action="#">
+        <h2>Login</h2>
+        <p>Use one of the demo accounts or register a new user.</p>
+        <label>Email
+          <input name="email" type="email" value="admin@bayanihanhub.test" required>
+        </label>
+        <label>Password
+          <input name="password" type="password" value="Password123" required>
+        </label>
+        <button class="action-btn" type="submit">Login</button>
+      </form>
+
+      <form id="registerForm" class="auth-form" method="post" action="#">
+        <h2>Create account</h2>
+        <p>New accounts are saved in this browser for the prototype.</p>
+        <label>Name
+          <input name="name" required>
+        </label>
+        <label>Email
+          <input name="email" type="email" required>
+        </label>
+        <label>Password
+          <input name="password" type="password" minlength="8" required>
+        </label>
+        <label>Role
+          <select name="role">
+            <option>User</option>
+            <option>Staff</option>
+            <option>Admin</option>
+          </select>
+        </label>
+        <button class="action-btn" type="submit">Register and login</button>
+      </form>
+
+      <div class="demo-accounts">
+        <span>Demo accounts</span>
+        <button type="button" data-demo="admin@bayanihanhub.test">Admin</button>
+        <button type="button" data-demo="staff@bayanihanhub.test">Staff</button>
+        <button type="button" data-demo="user@bayanihanhub.test">User</button>
+        <p>Password: <strong>Password123</strong></p>
+      </div>
+    </div>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">BH</div>
+        <div>
+          <h1>BayanihanHub</h1>
+          <p>Foundation operations</p>
+        </div>
+      </div>
+
+      <div class="session-card">
+        <span>Signed in as</span>
+        <strong id="sidebarName">Maria Santos</strong>
+        <p id="sidebarRole">Admin</p>
+        <button class="ghost-btn" id="logoutBtn" type="button">Logout</button>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="dashboard">Dashboard</button>
+        <button class="nav-item" data-view="events">Events</button>
+        <button class="nav-item" data-view="fundraisers">Fundraisers</button>
+        <button class="nav-item" data-view="donations">Donations</button>
+        <button class="nav-item" data-view="feedback">Feedback</button>
+        <button class="nav-item" data-view="achievements">Achievements</button>
+        <button class="nav-item" data-view="reports">Reports</button>
+        <button class="nav-item" data-view="logs">Logs</button>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Centralized foundation event and fundraising management system</p>
+          <h2 id="pageTitle">Dashboard</h2>
+        </div>
+        <div class="profile-chip">
+          <span id="activeRole">Admin</span>
+          <strong id="activeName">Maria Santos</strong>
+        </div>
+      </header>
+
+      <section id="dashboard" class="view active"></section>
+      <section id="events" class="view"></section>
+      <section id="fundraisers" class="view"></section>
+      <section id="donations" class="view"></section>
+      <section id="feedback" class="view"></section>
+      <section id="achievements" class="view"></section>
+      <section id="reports" class="view"></section>
+      <section id="logs" class="view"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="app.js?v=3"></script>
+</body>
+</html>
