@@ -1,6 +1,6 @@
 import { MessageSquare, Plus, Star } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import { api, participantsApi } from "../api/client.js";
 import Modal from "../components/ui/Modal.jsx";
 import FormField from "../components/ui/FormField.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
@@ -37,6 +37,7 @@ export default function Feedback() {
   const { user } = useAuth();
   const toast = useToast();
   const [events, setEvents] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -47,6 +48,7 @@ export default function Feedback() {
     try {
       const eventData = await api("/events");
       setEvents(eventData);
+      if (user.role === "User") setRegistrations(await participantsApi.getMy());
       if (user.role !== "User") setFeedback(await api("/feedback"));
     } catch { toast.error("Failed to load feedback data"); }
     finally { setLoading(false); }
@@ -78,6 +80,13 @@ export default function Feedback() {
   const avgRating = feedback.length
     ? (feedback.reduce((sum, f) => sum + (f.rating || 0), 0) / feedback.length).toFixed(1)
     : "—";
+
+  const attendedEventIds = new Set(
+    registrations
+      .filter((item) => ["Present", "Verified"].includes(item.attendanceStatus))
+      .map((item) => item.eventId?._id || item.eventId)
+  );
+  const feedbackEvents = events.filter((event) => event.status === "Completed" && attendedEventIds.has(event._id));
 
   return (
     <section className="space-y-6 animate-fade-in">
@@ -140,11 +149,11 @@ export default function Feedback() {
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-xs font-bold shrink-0">
-                        {(item.user?.name || "U")[0].toUpperCase()}
+                        {(item.userId?.name || "U")[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-surface-900">{item.user?.name || "Anonymous"}</p>
-                        <p className="text-xs text-surface-500">{item.event?.title || "Event"}</p>
+                        <p className="text-sm font-semibold text-surface-900">{item.userId?.name || "Anonymous"}</p>
+                        <p className="text-xs text-surface-500">{item.eventId?.title || "Event"}</p>
                       </div>
                     </div>
                     <StarRating value={item.rating} readonly />
@@ -177,8 +186,11 @@ export default function Feedback() {
           <FormField label="Event" required>
             <select className="input" value={form.event} onChange={(e) => setForm({ ...form, event: e.target.value })} required>
               <option value="">Select an event</option>
-              {events.filter((e) => e.status === "approved").map((e) => <option key={e._id} value={e._id}>{e.title}</option>)}
+              {feedbackEvents.map((e) => <option key={e._id} value={e._id}>{e.title}</option>)}
             </select>
+            {feedbackEvents.length === 0 && (
+              <p className="form-hint">Completed events appear here after your attendance is present or verified.</p>
+            )}
           </FormField>
           <FormField label="Rating">
             <StarRating value={form.rating} onChange={(r) => setForm({ ...form, rating: r })} />

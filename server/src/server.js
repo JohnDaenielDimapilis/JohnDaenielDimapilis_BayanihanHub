@@ -15,6 +15,7 @@ import reportRoutes from "./routes/reportRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
 import securityRoutes from "./routes/securityRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 import User from "./models/User.js";
 
 dotenv.config();
@@ -48,6 +49,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/logs", logRoutes);
 app.use("/api/security", securityRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

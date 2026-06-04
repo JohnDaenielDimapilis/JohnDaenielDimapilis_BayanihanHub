@@ -14,7 +14,14 @@ const participantSchema = new mongoose.Schema(
       enum: ["Joined", "Waitlisted", "Completed", "Cancelled"],
       default: "Joined"
     },
-    joinedAt: { type: Date, default: Date.now }
+    joinedAt: { type: Date, default: Date.now },
+    cancelledAt: { type: Date },
+    cancellationReason: { type: String, trim: true },
+    waitlistPosition: { type: Number, min: 1 },
+    checkInCode: { type: String, trim: true },
+    checkedInAt: { type: Date },
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    attendanceRemarks: { type: String, trim: true }
   },
   { timestamps: true }
 );

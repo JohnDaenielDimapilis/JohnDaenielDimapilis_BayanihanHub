@@ -1,6 +1,6 @@
-import { CheckCircle, UserX, Users } from "lucide-react";
+import { CheckCircle, Download, ShieldCheck, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import { api, getToken, participantsApi } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
@@ -28,8 +28,39 @@ export default function Participants() {
     } catch (err) { toast.error(err.message); }
   }
 
+  async function verify(id) {
+    const attendanceRemarks = window.prompt("Attendance remarks:", "Verified on site");
+    if (attendanceRemarks === null) return;
+    try {
+      await participantsApi.verifyAttendance(id, { attendanceRemarks });
+      toast.success("Attendance verified");
+      load();
+    } catch (err) { toast.error(err.message); }
+  }
+
+  async function exportEvent(eventId, title) {
+    try {
+      const response = await fetch(participantsApi.exportUrl(eventId), {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || "Export failed");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(title || "event").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-participants.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Participant export downloaded");
+    } catch (err) { toast.error(err.message); }
+  }
+
   const presentCount = participants.filter((p) => p.attendanceStatus === "Present").length;
-  const absentCount = participants.filter((p) => p.attendanceStatus === "Absent").length;
+  const absentCount = participants.filter((p) => ["Absent", "No-show"].includes(p.attendanceStatus)).length;
+  const verifiedCount = participants.filter((p) => p.attendanceStatus === "Verified").length;
 
   const columns = [
     {
@@ -64,11 +95,27 @@ export default function Participants() {
       render: (row) => <StatusBadge value={row.attendanceStatus} />,
     },
     {
+      key: "waitlist",
+      header: "Waitlist",
+      accessor: (row) => row.waitlistPosition || "",
+      render: (row) => row.waitlistPosition ? <span className="text-sm font-semibold text-surface-700">#{row.waitlistPosition}</span> : <span className="text-xs text-surface-400">-</span>,
+    },
+    {
+      key: "checkedInAt",
+      header: "Check-in",
+      accessor: (row) => row.checkedInAt || "",
+      render: (row) => (
+        <span className="text-xs text-surface-500">
+          {row.checkedInAt ? new Date(row.checkedInAt).toLocaleString() : "Not checked in"}
+        </span>
+      ),
+    },
+    {
       key: "actions",
       header: "",
       sortable: false,
       render: (row) => (
-        <div className="flex items-center gap-2 justify-end">
+        <div className="flex flex-wrap items-center gap-2 justify-end min-w-[260px]">
           <button
             className="btn-primary btn-xs"
             onClick={() => setConfirm({ id: row._id, status: "Present", name: row.userId?.name })}
@@ -83,6 +130,22 @@ export default function Participants() {
             <UserX size={13} />
             Absent
           </button>
+          <button
+            className="btn-outline btn-xs"
+            onClick={() => setConfirm({ id: row._id, status: "No-show", name: row.userId?.name })}
+          >
+            No-show
+          </button>
+          <button className="btn-primary btn-xs" onClick={() => verify(row._id)}>
+            <ShieldCheck size={13} />
+            Verify
+          </button>
+          {row.eventId?._id && (
+            <button className="btn-outline btn-xs" onClick={() => exportEvent(row.eventId._id, row.eventId?.title)}>
+              <Download size={13} />
+              Export
+            </button>
+          )}
         </div>
       ),
     },
@@ -95,7 +158,7 @@ export default function Participants() {
         <p>Track event registrations and manage attendance</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="stat-card-component">
           <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Total</span>
           <div className="flex items-center gap-2">
@@ -111,10 +174,17 @@ export default function Participants() {
           </div>
         </div>
         <div className="stat-card-component">
-          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Absent</span>
+          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Absent / No-show</span>
           <div className="flex items-center gap-2">
             <UserX size={18} className="text-danger-500" />
             <strong className="text-2xl font-bold text-danger-600">{absentCount}</strong>
+          </div>
+        </div>
+        <div className="stat-card-component">
+          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Verified</span>
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-success-500" />
+            <strong className="text-2xl font-bold text-success-600">{verifiedCount}</strong>
           </div>
         </div>
       </div>

@@ -1,64 +1,151 @@
 import Event from "../models/Event.js";
+import Participant from "../models/Participant.js";
+import User from "../models/User.js";
+import {
+  getMissingEventFields,
+  USER_VISIBLE_EVENT_STATUSES,
+  validateEventSchedule
+} from "../utils/eventWorkflow.js";
 import { createLog } from "./logController.js";
+import { createNotification, createNotifications } from "./notificationController.js";
+
+const EVENT_FIELDS = [
+  "title",
+  "eventType",
+  "type",
+  "description",
+  "objectives",
+  "date",
+  "time",
+  "location",
+  "participantLimit",
+  "targetBeneficiaries",
+  "requiredResources",
+  "registrationStartDate",
+  "registrationEndDate",
+  "waitlistEnabled",
+  "capacityRule"
+];
+
+function eventTitle(event) {
+  return event.title || "Untitled event";
+}
+
+function applyEventFields(event, body) {
+  EVENT_FIELDS.forEach((field) => {
+    if (body[field] !== undefined) {
+      event[field === "type" ? "eventType" : field] = body[field];
+    }
+  });
+}
+
+function getSubmissionError(event) {
+  const missing = getMissingEventFields(event);
+  if (missing.length) {
+    return `Missing required fields before submission: ${missing.join(", ")}.`;
+  }
+
+  const scheduleError = validateEventSchedule(event);
+  if (scheduleError) return scheduleError;
+
+  return null;
+}
+
+function isOwnStaffEvent(req, event) {
+  return req.user.role !== "Staff" || event.createdBy?.toString() === req.user._id.toString();
+}
+
+function ensureStaffOwnsEvent(req, event, res) {
+  if (!isOwnStaffEvent(req, event)) {
+    res.status(403).json({ message: "Staff can only manage their own events." });
+    return false;
+  }
+  return true;
+}
+
+async function logEventChange(req, event, action, oldStatus, extra = {}) {
+  await createLog({
+    userId: req.user._id,
+    role: req.user.role,
+    action,
+    module: "Event",
+    status: "Success",
+    details: {
+      recordId: event._id,
+      recordOwner: event.createdBy,
+      oldValue: oldStatus ? { status: oldStatus } : undefined,
+      newValue: { status: event.status, progressPercentage: event.progressPercentage, title: event.title },
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+      ...extra
+    }
+  });
+}
+
+async function notifyAdmins(title, message, eventId) {
+  const admins = await User.find({ role: "Admin", isActive: { $ne: false } }).select("_id");
+  return createNotifications(admins.map((admin) => ({
+    userId: admin._id,
+    title,
+    message,
+    type: "Event",
+    relatedRecordId: eventId
+  })));
+}
+
+async function notifyVisibleUsers(title, message, eventId) {
+  const users = await User.find({ role: "User", isActive: { $ne: false } }).select("_id");
+  return createNotifications(users.map((user) => ({
+    userId: user._id,
+    title,
+    message,
+    type: "Event",
+    relatedRecordId: eventId
+  })));
+}
+
+async function notifyCreator(event, title, message) {
+  return createNotification({
+    userId: event.createdBy,
+    title,
+    message,
+    type: "Event",
+    relatedRecordId: event._id
+  });
+}
 
 export async function createEvent(req, res) {
   try {
-    const {
-      title,
-      type,
-      eventType,
-      description,
-      objectives,
-      date,
-      time,
-      location,
-      participantLimit,
-      targetBeneficiaries,
-      requiredResources,
-      waitlistEnabled = true,
-      capacityRule
-    } = req.body;
+    const event = new Event({
+      createdBy: req.user._id,
+      status: req.body.submitForReview ? "Pending Review" : "Draft"
+    });
+    applyEventFields(event, req.body);
 
-    if (!title || !description || !date || !location || !participantLimit) {
-      return res.status(400).json({ message: "All event fields are required." });
+    if (req.body.submitForReview) {
+      const error = getSubmissionError(event);
+      if (error) return res.status(400).json({ message: error });
     }
 
-    const event = await Event.create({
-      title,
-      eventType: eventType || type,
-      description,
-      objectives,
-      date,
-      time,
-      location,
-      participantLimit,
-      targetBeneficiaries,
-      requiredResources,
-      waitlistEnabled,
-      capacityRule,
-      status: req.user.role === "Admin" ? "Approved" : "Pending",
-      createdBy: req.user._id,
-      approvedBy: req.user.role === "Admin" ? req.user._id : undefined,
-      approvedAt: req.user.role === "Admin" ? new Date() : undefined
-    });
+    await event.save();
 
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Created",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        newValue: { status: event.status, title: event.title },
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
-      }
-    });
+    await logEventChange(
+      req,
+      event,
+      req.body.submitForReview ? "Event Submitted for Review" : "Event Draft Saved",
+      null
+    );
+
+    if (event.status === "Pending Review") {
+      await notifyAdmins(
+        "Event pending review",
+        `${req.user.name} submitted "${eventTitle(event)}" for review.`,
+        event._id
+      );
+    }
 
     res.status(201).json({
-      message: req.user.role === "Admin" ? "Event created and approved." : "Event created and submitted for admin approval.",
+      message: event.status === "Pending Review" ? "Event submitted for admin review." : "Event saved as draft.",
       event
     });
   } catch (error) {
@@ -66,13 +153,27 @@ export async function createEvent(req, res) {
   }
 }
 
+export async function publicEvents(req, res) {
+  try {
+    const events = await Event.find({ status: { $in: USER_VISIBLE_EVENT_STATUSES } })
+      .populate("createdBy", "name email role")
+      .sort({ date: 1 });
+
+    res.status(200).json(events);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch public events.", error: error.message });
+  }
+}
+
 export async function getEvents(req, res) {
   try {
-    const filter = req.user.role === "User" ? { status: { $in: ["Approved", "Published", "Open", "Full"] } } : {};
+    const filter = req.user.role === "User" ? { status: { $in: USER_VISIBLE_EVENT_STATUSES } } : {};
 
     const events = await Event.find(filter)
       .populate("createdBy", "name email role")
-      .sort({ date: 1 });
+      .populate("approvedBy", "name email role")
+      .populate("revisionRequestedBy", "name email role")
+      .sort({ date: 1, createdAt: -1 });
 
     res.status(200).json(events);
   } catch (error) {
@@ -85,10 +186,13 @@ export async function getEventById(req, res) {
     const filter = { _id: req.params.id };
 
     if (req.user.role === "User") {
-      filter.status = { $in: ["Approved", "Published", "Open", "Full"] };
+      filter.status = { $in: USER_VISIBLE_EVENT_STATUSES };
     }
 
-    const event = await Event.findOne(filter).populate("createdBy", "name email role");
+    const event = await Event.findOne(filter)
+      .populate("createdBy", "name email role")
+      .populate("approvedBy", "name email role")
+      .populate("revisionRequestedBy", "name email role");
 
     if (!event) {
       return res.status(404).json({ message: "Event not found." });
@@ -108,53 +212,40 @@ export async function updateEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (req.user.role === "Staff" && event.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Staff can only update their own events." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+
+    const editableStatuses = ["Draft", "Pending Review", "Rejected", "Approved"];
+    if (!editableStatuses.includes(event.status)) {
+      return res.status(400).json({ message: `Events in ${event.status} status cannot be edited.` });
     }
 
-    const allowedFields = [
-      "title",
-      "eventType",
-      "type",
-      "description",
-      "objectives",
-      "date",
-      "time",
-      "location",
-      "participantLimit",
-      "targetBeneficiaries",
-      "actualBeneficiariesServed",
-      "requiredResources",
-      "waitlistEnabled",
-      "capacityRule",
-      "outcomeSummary"
-    ];
-    allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        event[field === "type" ? "eventType" : field] = req.body[field];
-      }
-    });
+    const oldStatus = event.status;
+    applyEventFields(event, req.body);
 
-    event.status = "Pending";
+    if (req.body.submitForReview) {
+      const error = getSubmissionError(event);
+      if (error) return res.status(400).json({ message: error });
+      event.status = "Pending Review";
+      event.revisionRemarks = undefined;
+      event.revisionRequestedBy = undefined;
+      event.revisionRequestedAt = undefined;
+    } else if (oldStatus === "Rejected") {
+      event.status = "Draft";
+    }
+
     await event.save();
+    await logEventChange(req, event, "Event Updated", oldStatus);
 
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Updated",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        newValue: { status: event.status, title: event.title },
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
-      }
-    });
+    if (event.status === "Pending Review" && oldStatus !== "Pending Review") {
+      await notifyAdmins(
+        "Event pending review",
+        `${req.user.name} submitted updates to "${eventTitle(event)}".`,
+        event._id
+      );
+    }
 
     res.status(200).json({
-      message: "Event updated and returned to pending status.",
+      message: event.status === "Pending Review" ? "Event updated and submitted for review." : "Event updated.",
       event
     });
   } catch (error) {
@@ -169,28 +260,51 @@ export async function deleteEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (req.user.role === "Staff" && event.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Staff can only delete their own events." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+
+    if (!["Draft", "Rejected", "Archived"].includes(event.status)) {
+      return res.status(400).json({ message: "Only draft, rejected, or archived events can be deleted." });
     }
 
     await event.deleteOne();
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Deleted",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        oldValue: { status: event.status, title: event.title },
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
-      }
-    });
+    await logEventChange(req, event, "Event Deleted", event.status);
     res.status(200).json({ message: "Event deleted successfully." });
   } catch (error) {
     res.status(500).json({ message: "Event deletion failed.", error: error.message });
+  }
+}
+
+export async function submitEvent(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+
+    if (!["Draft", "Rejected", "Pending Review"].includes(event.status)) {
+      return res.status(400).json({ message: `Cannot submit an event from ${event.status} status.` });
+    }
+
+    applyEventFields(event, req.body);
+    const error = getSubmissionError(event);
+    if (error) return res.status(400).json({ message: error });
+
+    const oldStatus = event.status;
+    event.status = "Pending Review";
+    event.revisionRemarks = undefined;
+    event.revisionRequestedBy = undefined;
+    event.revisionRequestedAt = undefined;
+    await event.save();
+
+    await logEventChange(req, event, "Event Submitted for Review", oldStatus);
+    await notifyAdmins(
+      "Event pending review",
+      `${req.user.name} submitted "${eventTitle(event)}" for review.`,
+      event._id
+    );
+
+    res.status(200).json({ message: "Event submitted for review.", event });
+  } catch (error) {
+    res.status(500).json({ message: "Event submission failed.", error: error.message });
   }
 }
 
@@ -202,30 +316,41 @@ export async function approveEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    const { approvalCriteria, approvalRemarks } = req.body;
+    if (event.status !== "Pending Review") {
+      return res.status(400).json({ message: "Only events pending review can be approved." });
+    }
 
+    const criteria = req.body.approvalCriteria || {};
+    const approvalCriteria = {
+      goalAligned: Boolean(criteria.goalAligned ?? criteria.purposeAligned),
+      dateValid: Boolean(criteria.dateValid ?? criteria.scheduleValid),
+      resourcesAvailable: Boolean(criteria.resourcesAvailable ?? true),
+      capacityReasonable: Boolean(criteria.capacityReasonable ?? criteria.capacityValid)
+    };
+
+    if (!approvalCriteria.goalAligned || !approvalCriteria.dateValid || !approvalCriteria.capacityReasonable) {
+      return res.status(400).json({
+        message: "Approval requires complete information, aligned purpose, and valid schedule/capacity."
+      });
+    }
+
+    const oldStatus = event.status;
     event.status = "Approved";
     event.approvedBy = req.user._id;
     event.approvedAt = new Date();
-    if (approvalCriteria) event.approvalCriteria = approvalCriteria;
-    if (approvalRemarks) event.approvalRemarks = approvalRemarks;
+    event.approvalCriteria = approvalCriteria;
+    event.approvalRemarks = req.body.approvalRemarks || "";
     await event.save();
 
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Approved",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        newValue: { status: event.status, approvalCriteria: event.approvalCriteria },
-        remarks: approvalRemarks,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
-      }
+    await logEventChange(req, event, "Event Approved", oldStatus, {
+      approvalCriteria,
+      remarks: event.approvalRemarks
     });
+    await notifyCreator(
+      event,
+      "Event approved",
+      `"${eventTitle(event)}" was approved. Open registration when you are ready.`
+    );
 
     res.status(200).json({
       message: "Event approved successfully.",
@@ -233,6 +358,40 @@ export async function approveEvent(req, res) {
     });
   } catch (error) {
     res.status(500).json({ message: "Event approval failed.", error: error.message });
+  }
+}
+
+export async function requestRevisionEvent(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (event.status !== "Pending Review") {
+      return res.status(400).json({ message: "Only pending review events can receive revision requests." });
+    }
+    if (!req.body.revisionRemarks) {
+      return res.status(400).json({ message: "Revision remarks are required." });
+    }
+
+    const oldStatus = event.status;
+    event.status = "Draft";
+    event.revisionRemarks = req.body.revisionRemarks;
+    event.revisionRequestedBy = req.user._id;
+    event.revisionRequestedAt = new Date();
+    await event.save();
+
+    await logEventChange(req, event, "Event Revision Requested", oldStatus, {
+      reason: event.revisionRemarks
+    });
+    await notifyCreator(
+      event,
+      "Event needs revision",
+      `"${eventTitle(event)}" was returned for revision: ${event.revisionRemarks}`
+    );
+
+    res.status(200).json({ message: "Revision request sent.", event });
+  } catch (error) {
+    res.status(500).json({ message: "Revision request failed.", error: error.message });
   }
 }
 
@@ -244,31 +403,29 @@ export async function rejectEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    event.status = "Rejected";
-    event.rejectedBy = req.user._id;
-    event.rejectedAt = new Date();
+    if (!["Pending Review", "Approved"].includes(event.status)) {
+      return res.status(400).json({ message: "Only pending or approved events can be rejected." });
+    }
+
     if (!req.body.rejectionReason) {
       return res.status(400).json({ message: "A rejection reason is required for the approval trail." });
     }
 
+    const oldStatus = event.status;
+    event.status = "Rejected";
+    event.rejectedBy = req.user._id;
+    event.rejectedAt = new Date();
     event.rejectionReason = req.body.rejectionReason;
     await event.save();
 
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Rejected",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        newValue: { status: event.status },
-        rejectionReason: event.rejectionReason,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
-      }
+    await logEventChange(req, event, "Event Rejected", oldStatus, {
+      rejectionReason: event.rejectionReason
     });
+    await notifyCreator(
+      event,
+      "Event rejected",
+      `"${eventTitle(event)}" was rejected: ${event.rejectionReason}`
+    );
 
     res.status(200).json({
       message: "Event rejected successfully.",
@@ -276,6 +433,52 @@ export async function rejectEvent(req, res) {
     });
   } catch (error) {
     res.status(500).json({ message: "Event rejection failed.", error: error.message });
+  }
+}
+
+export async function openRegistrationEvent(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (event.status !== "Approved") {
+      return res.status(400).json({ message: "Only approved events can be opened for registration." });
+    }
+
+    const oldStatus = event.status;
+    event.status = "Open for Registration";
+    await event.save();
+
+    await logEventChange(req, event, "Event Registration Opened", oldStatus);
+    await notifyVisibleUsers(
+      "Registration opened",
+      `"${eventTitle(event)}" is now open for registration.`,
+      event._id
+    );
+
+    res.status(200).json({ message: "Registration opened.", event });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to open registration.", error: error.message });
+  }
+}
+
+export async function closeRegistrationEvent(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (!["Open for Registration", "Full"].includes(event.status)) {
+      return res.status(400).json({ message: "Only open or full events can be closed." });
+    }
+
+    const oldStatus = event.status;
+    event.status = "Closed";
+    await event.save();
+
+    await logEventChange(req, event, "Event Registration Closed", oldStatus);
+    res.status(200).json({ message: "Registration closed.", event });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to close registration.", error: error.message });
   }
 }
 
@@ -287,9 +490,7 @@ export async function cancelEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (req.user.role === "Staff" && event.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Staff can only cancel their own events." });
-    }
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
 
     if (!req.body.cancellationReason) {
       return res.status(400).json({ message: "Cancellation reason is required." });
@@ -300,21 +501,13 @@ export async function cancelEvent(req, res) {
     event.cancellationReason = req.body.cancellationReason;
     await event.save();
 
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Cancelled",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        oldValue: { status: oldStatus },
-        newValue: { status: event.status },
-        reason: event.cancellationReason,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
-      }
+    await Participant.updateMany(
+      { eventId: event._id, participationStatus: { $in: ["Joined", "Waitlisted"] } },
+      { participationStatus: "Cancelled", cancelledAt: new Date(), cancellationReason: event.cancellationReason }
+    );
+
+    await logEventChange(req, event, "Event Cancelled", oldStatus, {
+      reason: event.cancellationReason
     });
 
     res.status(200).json({ message: "Event cancelled successfully.", event });
@@ -331,36 +524,82 @@ export async function completeEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (req.user.role === "Staff" && event.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Staff can only complete their own events." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (!["Closed", "Open for Registration", "Full"].includes(event.status)) {
+      return res.status(400).json({ message: "Only closed or registration-stage events can be completed." });
     }
 
+    const report = req.body.postEventReport || req.body;
+    const required = ["attendanceCount", "actualBeneficiariesServed", "outcomeSummary"];
+    const missing = required.filter((field) => report[field] === undefined || report[field] === "");
+    if (missing.length) {
+      return res.status(400).json({ message: `Post-event report is missing: ${missing.join(", ")}.` });
+    }
+
+    const oldStatus = event.status;
     event.status = "Completed";
     event.completedAt = new Date();
-    event.actualBeneficiariesServed = Number(req.body.actualBeneficiariesServed || event.actualBeneficiariesServed || 0);
-    if (req.body.outcomeSummary) event.outcomeSummary = req.body.outcomeSummary;
+    event.postEventReport = {
+      attendanceCount: Number(report.attendanceCount || 0),
+      noShowCount: Number(report.noShowCount || 0),
+      actualBeneficiariesServed: Number(report.actualBeneficiariesServed || 0),
+      outcomeSummary: report.outcomeSummary,
+      issuesEncountered: report.issuesEncountered,
+      recommendations: report.recommendations,
+      submittedBy: req.user._id,
+      submittedAt: new Date()
+    };
+    event.actualBeneficiariesServed = event.postEventReport.actualBeneficiariesServed;
+    event.outcomeSummary = event.postEventReport.outcomeSummary;
     await event.save();
 
-    await createLog({
-      userId: req.user._id,
-      role: req.user.role,
-      action: "Event Completed",
-      module: "Event",
-      status: "Success",
-      details: {
-        recordId: event._id,
-        recordOwner: event.createdBy,
-        newValue: {
-          status: event.status,
-          actualBeneficiariesServed: event.actualBeneficiariesServed
-        },
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent")
+    await Participant.updateMany(
+      { eventId: event._id, participationStatus: "Joined", attendanceStatus: { $in: ["Pending", "Present", "Verified"] } },
+      { participationStatus: "Completed" }
+    );
+
+    await logEventChange(req, event, "Event Completed", oldStatus, {
+      newValue: {
+        status: event.status,
+        progressPercentage: event.progressPercentage,
+        postEventReport: event.postEventReport
       }
     });
+
+    const attendedParticipants = await Participant.find({
+      eventId: event._id,
+      attendanceStatus: { $in: ["Present", "Verified"] }
+    }).select("userId");
+    await createNotifications(attendedParticipants.map((participant) => ({
+      userId: participant.userId,
+      title: "Feedback requested",
+      message: `Please share feedback for "${eventTitle(event)}".`,
+      type: "Feedback",
+      relatedRecordId: event._id
+    })));
 
     res.status(200).json({ message: "Event completed successfully.", event });
   } catch (error) {
     res.status(500).json({ message: "Event completion failed.", error: error.message });
+  }
+}
+
+export async function archiveEvent(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (event.status !== "Completed") {
+      return res.status(400).json({ message: "Only completed events can be archived." });
+    }
+
+    const oldStatus = event.status;
+    event.status = "Archived";
+    await event.save();
+
+    await logEventChange(req, event, "Event Archived", oldStatus);
+    res.status(200).json({ message: "Event archived successfully.", event });
+  } catch (error) {
+    res.status(500).json({ message: "Event archive failed.", error: error.message });
   }
 }

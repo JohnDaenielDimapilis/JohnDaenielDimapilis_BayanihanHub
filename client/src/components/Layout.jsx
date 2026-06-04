@@ -3,8 +3,9 @@ import {
   Gift, HandCoins, LayoutDashboard, LogOut, Menu, MessageSquare, Search,
   ShieldCheck, UserCog, Users, X
 } from "lucide-react";
-import { useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { notificationsApi } from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import Avatar from "./ui/Avatar.jsx";
 import CommandPalette from "./CommandPalette.jsx";
@@ -46,6 +47,7 @@ const pageTitles = {
   "/my-donations": "My Donations",
   "/participants": "Participants",
   "/feedback": "Feedback",
+  "/profile": "Profile",
   "/accounts": "Accounts",
   "/reports": "Reports",
   "/logs": "Activity Logs",
@@ -59,8 +61,26 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
 
   const currentTitle = pageTitles[location.pathname] || "Dashboard";
+  const unreadCount = notifications.filter((item) => !item.readAt).length;
+
+  useEffect(() => {
+    notificationsApi.getAll()
+      .then(setNotifications)
+      .catch(() => setNotifications([]));
+  }, [location.pathname]);
+
+  async function markNotificationsRead() {
+    try {
+      await notificationsApi.markAllRead();
+      setNotifications((items) => items.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+    } catch {
+      setNotificationsOpen(false);
+    }
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-50">
@@ -176,13 +196,45 @@ export default function Layout() {
             </kbd>
           </button>
 
-          <button
-            className="relative p-2 rounded-lg text-surface-500 hover:text-surface-700 hover:bg-surface-100 transition-colors"
-            aria-label="Notifications"
-          >
-            <Bell size={18} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger-500 rounded-full" />
-          </button>
+          <div className="relative">
+            <button
+              className="relative p-2 rounded-lg text-surface-500 hover:text-surface-700 hover:bg-surface-100 transition-colors"
+              aria-label="Notifications"
+              onClick={() => setNotificationsOpen(!notificationsOpen)}
+            >
+              <Bell size={18} />
+              {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger-500 rounded-full" />}
+            </button>
+            {notificationsOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl border border-surface-200 shadow-elevated z-50 overflow-hidden animate-scale-in">
+                  <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">Notifications</p>
+                      <p className="text-xs text-surface-500">{unreadCount} unread</p>
+                    </div>
+                    {notifications.length > 0 && (
+                      <button className="btn-ghost btn-xs" onClick={markNotificationsRead}>
+                        Mark read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="text-sm text-surface-500 text-center py-8">No notifications yet</p>
+                    ) : notifications.map((item) => (
+                      <div key={item._id} className={`px-4 py-3 border-b border-surface-100 last:border-0 ${item.readAt ? "bg-white" : "bg-brand-50/50"}`}>
+                        <p className="text-sm font-semibold text-surface-900">{item.title}</p>
+                        <p className="text-xs text-surface-600 mt-1">{item.message}</p>
+                        <p className="text-2xs text-surface-400 mt-2">{new Date(item.createdAt).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="relative">
             <button
@@ -200,6 +252,14 @@ export default function Layout() {
                     <p className="text-sm font-semibold text-surface-900">{user.name}</p>
                     <p className="text-xs text-surface-500">{user.email || user.role}</p>
                   </div>
+                  <Link
+                    to="/profile"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-100 transition-colors no-underline"
+                  >
+                    <UserCog size={15} />
+                    Profile settings
+                  </Link>
                   <button
                     onClick={() => { setUserMenuOpen(false); logout(); }}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50 transition-colors"

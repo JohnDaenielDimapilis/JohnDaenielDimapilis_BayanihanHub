@@ -3,10 +3,11 @@ import Donation from "../models/Donation.js";
 import Event from "../models/Event.js";
 import Fundraiser from "../models/Fundraiser.js";
 import Participant from "../models/Participant.js";
+import { USER_VISIBLE_EVENT_STATUSES } from "../utils/eventWorkflow.js";
 
 export async function dashboard(req, res, next) {
   try {
-    const eventFilterForUsers = req.user.role === "User" ? { status: { $in: ["Approved", "Published", "Open", "Full"] } } : {};
+    const eventFilterForUsers = req.user.role === "User" ? { status: { $in: USER_VISIBLE_EVENT_STATUSES } } : {};
     const fundraiserFilterForUsers = req.user.role === "User" ? { status: { $in: ["Approved", "Closed"] } } : {};
     const [
       events,
@@ -18,7 +19,7 @@ export async function dashboard(req, res, next) {
       achievements
     ] = await Promise.all([
       Event.countDocuments(eventFilterForUsers),
-      Event.countDocuments({ status: "Pending" }),
+      Event.countDocuments({ status: "Pending Review" }),
       Fundraiser.countDocuments({ status: "Pending" }),
       Fundraiser.countDocuments(fundraiserFilterForUsers),
       Donation.aggregate([

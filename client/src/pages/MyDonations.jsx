@@ -2,6 +2,7 @@ import { Heart, Calendar, Gift } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
+import StatusBadge from "../components/StatusBadge.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 
 export default function MyDonations() {
@@ -76,7 +77,32 @@ export default function MyDonations() {
       key: "status",
       header: "Status",
       accessor: "donationStatus",
-      render: (row) => <span className="badge badge-success text-xs">{row.donationStatus}</span>,
+      render: (row) => <StatusBadge value={row.donationStatus} />,
+    },
+    {
+      key: "receipt",
+      header: "Receipt",
+      accessor: "receiptNumber",
+      render: (row) => row.receiptNumber ? <code className="text-xs bg-success-50 px-2 py-1 rounded font-mono text-success-700">{row.receiptNumber}</code> : <span className="text-xs text-surface-400">Pending</span>,
+    },
+    {
+      key: "proof",
+      header: "Proof",
+      accessor: "proofOfPayment",
+      render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.proofOfPayment || "No proof note"}</span>,
+    },
+    {
+      key: "utilization",
+      header: "Utilization",
+      accessor: (row) => row.fundraiserId?.utilizationReport || row.fundraiserId?.reconciliationStatus || "",
+      render: (row) => (
+        <div className="max-w-[220px]">
+          <p className="text-xs text-surface-600 truncate">{row.fundraiserId?.utilizationReport || "No utilization report yet"}</p>
+          {row.fundraiserId?.reconciliationStatus && (
+            <p className="text-2xs text-surface-400">{row.fundraiserId.reconciliationStatus}</p>
+          )}
+        </div>
+      ),
     },
   ];
 

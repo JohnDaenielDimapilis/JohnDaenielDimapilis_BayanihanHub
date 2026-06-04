@@ -22,6 +22,7 @@ export default function Donations() {
     donationType: "Cash",
     purpose: "",
     paymentReference: "",
+    proofOfPayment: "",
     donorAnonymous: false
   });
 
@@ -48,11 +49,12 @@ export default function Donations() {
           donationType: form.donationType,
           donationPurpose: form.purpose,
           paymentReference: form.paymentReference,
+          proofOfPayment: form.proofOfPayment,
           donorAnonymous: form.donorAnonymous,
         }),
       });
       toast.success("Donation submitted for verification");
-      setForm({ fundraiser: "", amount: "", donationType: "Cash", purpose: "", paymentReference: "", donorAnonymous: false });
+      setForm({ fundraiser: "", amount: "", donationType: "Cash", purpose: "", paymentReference: "", proofOfPayment: "", donorAnonymous: false });
       setModalOpen(false);
       load();
     } catch (err) { toast.error(err.message); }
@@ -131,6 +133,12 @@ export default function Donations() {
       header: "Reference",
       accessor: "paymentReference",
       render: (row) => <code className="text-xs bg-surface-100 px-2 py-1 rounded font-mono text-surface-600">{row.paymentReference}</code>,
+    },
+    {
+      key: "proof",
+      header: "Proof",
+      accessor: "proofOfPayment",
+      render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.proofOfPayment || "No proof note"}</span>,
     },
     {
       key: "status",
@@ -240,6 +248,9 @@ export default function Donations() {
           </div>
           <FormField label="Payment Reference" required>
             <input className="input" placeholder="Reference number or receipt" value={form.paymentReference} onChange={(e) => setForm({ ...form, paymentReference: e.target.value })} required />
+          </FormField>
+          <FormField label="Proof Details">
+            <textarea className="input" placeholder="Paste receipt link, transaction note, or upload reference" value={form.proofOfPayment} onChange={(e) => setForm({ ...form, proofOfPayment: e.target.value })} />
           </FormField>
           <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm text-surface-700">
             <input

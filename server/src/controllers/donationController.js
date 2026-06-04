@@ -16,6 +16,7 @@ export async function createDonation(req, res) {
       donationType,
       donationPurpose,
       paymentReference,
+      proofOfPayment,
       donorAnonymous = false
     } = req.body;
 
@@ -45,6 +46,7 @@ export async function createDonation(req, res) {
       donationType,
       donationPurpose,
       paymentReference,
+      proofOfPayment,
       donorAnonymous,
       donationStatus: "Submitted",
       donationDate: new Date()
@@ -93,7 +95,7 @@ export async function getDonations(req, res) {
 
     const donations = await Donation.find(filter)
       .populate("donor", "name email role")
-      .populate("fundraiserId", "title purpose targetAmount status createdBy")
+      .populate("fundraiserId", "title purpose targetAmount status createdBy utilizationReport reconciliationStatus")
       .sort({ donationDate: -1 });
 
     res.status(200).json(donations);

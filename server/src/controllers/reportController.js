@@ -71,7 +71,7 @@ export async function getReports(req, res) {
         totalAchievements
       ] = await Promise.all([
         User.countDocuments(),
-        Event.find({}).select("status actualBeneficiariesServed"),
+      Event.find({}).select("status actualBeneficiariesServed postEventReport"),
         Participant.find({}).select("attendanceStatus participationStatus"),
         Fundraiser.find({}).select("status"),
         Donation.find({}).select("amount donationType donationStatus"),
@@ -82,7 +82,9 @@ export async function getReports(req, res) {
       const totalDonationAmount = donations
         .filter((donation) => donation.donationStatus === "Verified")
         .reduce((sum, donation) => sum + donation.amount, 0);
-      const beneficiariesServed = events.reduce((sum, event) => sum + Number(event.actualBeneficiariesServed || 0), 0);
+      const beneficiariesServed = events.reduce((sum, event) => (
+        sum + Number(event.postEventReport?.actualBeneficiariesServed ?? event.actualBeneficiariesServed ?? 0)
+      ), 0);
       const avgRating = feedbackRecords.length
         ? feedbackRecords.reduce((sum, item) => sum + Number(item.rating || 0), 0) / feedbackRecords.length
         : 0;
@@ -97,7 +99,7 @@ export async function getReports(req, res) {
         fundraisers: toChartRows(groupBy(fundraisers, "status")),
         totalUsers,
         totalEvents: events.length,
-        pendingEvents: countByStatus(events, "Pending"),
+        pendingEvents: countByStatus(events, "Pending Review"),
         approvedEvents: countByStatus(events, "Approved"),
         rejectedEvents: countByStatus(events, "Rejected"),
         completedEvents: countByStatus(events, "Completed"),
@@ -125,7 +127,7 @@ export async function getReports(req, res) {
       });
     }
 
-    const staffEvents = await Event.find({ createdBy: req.user._id }).select("_id status");
+    const staffEvents = await Event.find({ createdBy: req.user._id }).select("_id status actualBeneficiariesServed postEventReport");
     const staffFundraisers = await Fundraiser.find({ createdBy: req.user._id }).select("_id status");
     const eventIds = staffEvents.map((event) => event._id);
     const fundraiserIds = staffFundraisers.map((fundraiser) => fundraiser._id);
@@ -152,7 +154,7 @@ export async function getReports(req, res) {
       donationStatus: toChartRows(groupBy(donations, "donationStatus")),
       fundraisers: toChartRows(groupBy(staffFundraisers, "status")),
       totalEvents: staffEvents.length,
-      pendingEvents: countByStatus(staffEvents, "Pending"),
+      pendingEvents: countByStatus(staffEvents, "Pending Review"),
       approvedEvents: countByStatus(staffEvents, "Approved"),
       rejectedEvents: countByStatus(staffEvents, "Rejected"),
       completedEvents: countByStatus(staffEvents, "Completed"),
@@ -173,7 +175,9 @@ export async function getReports(req, res) {
         participants,
         donations,
         feedbackCount: feedbackRecords.length,
-        beneficiariesServed: 0
+        beneficiariesServed: staffEvents.reduce((sum, event) => (
+          sum + Number(event.postEventReport?.actualBeneficiariesServed ?? event.actualBeneficiariesServed ?? 0)
+        ), 0)
       })
     });
   } catch (error) {

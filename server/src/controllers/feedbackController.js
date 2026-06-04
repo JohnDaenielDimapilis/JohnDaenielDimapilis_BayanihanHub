@@ -14,11 +14,17 @@ export async function createFeedback(req, res) {
     const participant = await Participant.findOne({
       userId: req.user._id,
       eventId,
-      participationStatus: { $ne: "Cancelled" }
+      participationStatus: { $ne: "Cancelled" },
+      attendanceStatus: { $in: ["Present", "Verified"] }
     });
 
     if (!participant) {
-      return res.status(403).json({ message: "You can only submit feedback for events you joined." });
+      return res.status(403).json({ message: "Feedback is available only after your attendance is present or verified." });
+    }
+
+    const event = await Event.findById(eventId).select("createdBy status");
+    if (!event || event.status !== "Completed") {
+      return res.status(403).json({ message: "Feedback can be submitted only after the event is completed." });
     }
 
     const existingFeedback = await Feedback.findOne({
@@ -38,7 +44,6 @@ export async function createFeedback(req, res) {
       suggestions
     });
 
-    const event = await Event.findById(eventId).select("createdBy");
     await createLog({
       userId: req.user._id,
       role: req.user.role,

@@ -12,6 +12,7 @@ export default function Security() {
   const [summary, setSummary] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [severity, setSeverity] = useState("all");
 
   useEffect(() => {
     Promise.all([api("/security"), api("/security/logs")])
@@ -20,7 +21,15 @@ export default function Security() {
       .finally(() => setLoading(false));
   }, []);
 
+  const filteredLogs = logs.filter((log) => severity === "all" || log.severity === severity);
+
   const columns = [
+    {
+      key: "severity",
+      header: "Severity",
+      accessor: "severity",
+      render: (row) => <StatusBadge value={row.severity} />,
+    },
     {
       key: "date",
       header: "Timestamp",
@@ -87,7 +96,7 @@ export default function Security() {
           <StatCard label="Failed Logins" value={summary?.failedLogins ?? 0} icon={Lock} color="red" />
           <StatCard label="Unauthorized" value={summary?.unauthorizedAttempts ?? 0} icon={ShieldAlert} color="amber" />
           <StatCard label="Inactive Users" value={summary?.inactiveUsers ?? 0} icon={UserX} color="default" />
-          <StatCard label="Role Changes" value={summary?.roleChanges ?? 0} icon={ShieldCheck} color="blue" />
+          <StatCard label="Retention" value={`${summary?.retentionDays ?? 90} days`} icon={ShieldCheck} color="blue" />
         </div>
       )}
 
@@ -106,13 +115,21 @@ export default function Security() {
 
       {loading ? <SkeletonTable rows={8} cols={5} /> : (
         <DataTable
-          data={logs}
+          data={filteredLogs}
           columns={columns}
           searchPlaceholder="Search security events..."
           emptyTitle="No security events"
           emptyDescription="Security events will be logged here automatically."
           exportFilename="security-logs"
           pageSize={25}
+          actions={(
+            <select className="input h-9 w-auto text-sm" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              <option value="all">All severities</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          )}
         />
       )}
     </section>

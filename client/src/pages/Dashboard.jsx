@@ -31,10 +31,16 @@ export default function Dashboard() {
   const normalizeStatus = (status) => String(status || "").toLowerCase();
 
   const eventStatusData = events.length ? [
+    { label: "Draft", value: events.filter((e) => normalizeStatus(e.status) === "draft").length, color: "#94a3b8" },
+    { label: "Pending Review", value: events.filter((e) => normalizeStatus(e.status) === "pending review").length, color: "#f59e0b" },
     { label: "Approved", value: events.filter((e) => normalizeStatus(e.status) === "approved").length, color: "#22c55e" },
-    { label: "Pending", value: events.filter((e) => normalizeStatus(e.status) === "pending").length, color: "#f59e0b" },
-    { label: "Rejected", value: events.filter((e) => normalizeStatus(e.status) === "rejected").length, color: "#ef4444" },
+    { label: "Open", value: events.filter((e) => normalizeStatus(e.status) === "open for registration").length, color: "#14b8a6" },
+    { label: "Full", value: events.filter((e) => normalizeStatus(e.status) === "full").length, color: "#8b5cf6" },
+    { label: "Closed", value: events.filter((e) => normalizeStatus(e.status) === "closed").length, color: "#64748b" },
     { label: "Completed", value: events.filter((e) => normalizeStatus(e.status) === "completed").length, color: "#3b82f6" },
+    { label: "Cancelled", value: events.filter((e) => normalizeStatus(e.status) === "cancelled").length, color: "#ef4444" },
+    { label: "Rejected", value: events.filter((e) => normalizeStatus(e.status) === "rejected").length, color: "#dc2626" },
+    { label: "Archived", value: events.filter((e) => normalizeStatus(e.status) === "archived").length, color: "#475569" },
   ].filter((d) => d.value > 0) : [];
 
   const topFundraisers = fundraisers
@@ -183,26 +189,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="card-padded">
-        <h3 className="text-base font-semibold text-surface-900 mb-4">Workflow Pipeline</h3>
-        <div className="flex flex-wrap items-center gap-3">
-          {[
-            { step: "1", label: "Staff submits", color: "bg-info-50 text-info-600 border-info-200" },
-            { step: "2", label: "Admin approves", color: "bg-warning-50 text-warning-600 border-warning-200" },
-            { step: "3", label: "Users join & donate", color: "bg-success-50 text-success-600 border-success-200" },
-            { step: "4", label: "Feedback collected", color: "bg-purple-50 text-purple-600 border-purple-200" },
-            { step: "5", label: "Achievements update", color: "bg-accent-50 text-accent-600 border-accent-200" },
-          ].map((item, i) => (
-            <div key={i} className="flex items-center gap-2">
-              {i > 0 && <ArrowRight size={14} className="text-surface-300 hidden sm:block" />}
-              <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border ${item.color}`}>
-                <span className="w-6 h-6 rounded-full bg-current/10 flex items-center justify-center text-xs font-bold">{item.step}</span>
-                <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }

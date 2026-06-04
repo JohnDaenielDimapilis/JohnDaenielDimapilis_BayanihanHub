@@ -1,10 +1,10 @@
-import { Eye, EyeOff, UserPlus } from "lucide-react";
+import { Chrome, Eye, EyeOff, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Register() {
-  const { register } = useAuth();
+  const { googleLogin, register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", password: "", privacyConsent: false });
   const [error, setError] = useState("");
@@ -22,6 +22,19 @@ export default function Register() {
         return;
       }
       await register(form);
+      navigate("/");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function signInWithGoogle() {
+    setError("");
+    setLoading(true);
+    try {
+      await googleLogin();
       navigate("/");
     } catch (err) {
       setError(err.message);
@@ -115,7 +128,7 @@ export default function Register() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <p className="form-hint">Must be at least 8 characters</p>
+              <p className="form-hint">Use at least 8 characters with uppercase, lowercase, and a number.</p>
             </div>
 
             <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm text-surface-700">
@@ -146,10 +159,27 @@ export default function Register() {
             </button>
           </form>
 
+          <div className="flex items-center gap-3 my-5">
+            <div className="h-px bg-surface-200 flex-1" />
+            <span className="text-xs font-medium text-surface-400">or</span>
+            <div className="h-px bg-surface-200 flex-1" />
+          </div>
+
+          <button type="button" className="btn-outline w-full h-11 justify-center" onClick={signInWithGoogle} disabled={loading}>
+            <Chrome size={16} />
+            Continue with Google
+          </button>
+
           <p className="text-sm text-surface-500 text-center mt-6">
             Already have an account?{" "}
             <Link to="/login" className="text-brand-500 font-semibold hover:text-brand-600 no-underline">
               Sign in
+            </Link>
+          </p>
+          <p className="text-sm text-surface-500 text-center mt-3">
+            Browse before signing up?{" "}
+            <Link to="/public-events" className="text-brand-500 font-semibold hover:text-brand-600 no-underline">
+              View public events
             </Link>
           </p>
         </div>

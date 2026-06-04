@@ -23,13 +23,20 @@ export function AuthProvider({ children }) {
     setUser(data.user);
   }
 
+  async function googleLogin(payload = {}) {
+    const data = await authApi.googleDemo(payload);
+    localStorage.setItem("bayanihan_token", data.token);
+    localStorage.setItem("bayanihan_user", JSON.stringify(data.user));
+    setUser(data.user);
+  }
+
   function logout() {
     localStorage.removeItem("bayanihan_token");
     localStorage.removeItem("bayanihan_user");
     setUser(null);
   }
 
-  const value = useMemo(() => ({ user, login, register, logout }), [user]);
+  const value = useMemo(() => ({ user, login, register, googleLogin, logout }), [user]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

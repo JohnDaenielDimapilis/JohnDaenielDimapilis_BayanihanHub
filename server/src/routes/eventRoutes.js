@@ -1,18 +1,26 @@
 import express from "express";
 import {
+  archiveEvent,
   approveEvent,
   cancelEvent,
+  closeRegistrationEvent,
   completeEvent,
   createEvent,
   deleteEvent,
   getEventById,
   getEvents,
+  openRegistrationEvent,
+  publicEvents,
   rejectEvent,
+  requestRevisionEvent,
+  submitEvent,
   updateEvent
 } from "../controllers/eventController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+router.get("/public", publicEvents);
 
 router.use(protect);
 router.get("/", getEvents);
@@ -20,9 +28,14 @@ router.get("/:id", getEventById);
 router.post("/", authorize("Admin", "Staff"), createEvent);
 router.put("/:id", authorize("Admin", "Staff"), updateEvent);
 router.delete("/:id", authorize("Admin", "Staff"), deleteEvent);
+router.patch("/:id/submit", authorize("Admin", "Staff"), submitEvent);
 router.patch("/:id/approve", authorize("Admin"), approveEvent);
+router.patch("/:id/request-revision", authorize("Admin"), requestRevisionEvent);
 router.patch("/:id/reject", authorize("Admin"), rejectEvent);
+router.patch("/:id/open-registration", authorize("Admin", "Staff"), openRegistrationEvent);
+router.patch("/:id/close-registration", authorize("Admin", "Staff"), closeRegistrationEvent);
 router.patch("/:id/cancel", authorize("Admin", "Staff"), cancelEvent);
 router.patch("/:id/complete", authorize("Admin", "Staff"), completeEvent);
+router.patch("/:id/archive", authorize("Admin", "Staff"), archiveEvent);
 
 export default router;

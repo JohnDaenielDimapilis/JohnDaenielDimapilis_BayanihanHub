@@ -1,10 +1,10 @@
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { Chrome, Eye, EyeOff, LogIn } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { googleLogin, login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -17,6 +17,19 @@ export default function Login() {
     setLoading(true);
     try {
       await login(form.email, form.password);
+      navigate("/");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function signInWithGoogle() {
+    setError("");
+    setLoading(true);
+    try {
+      await googleLogin();
       navigate("/");
     } catch (err) {
       setError(err.message);
@@ -128,10 +141,27 @@ export default function Login() {
             </button>
           </form>
 
+          <div className="flex items-center gap-3 my-5">
+            <div className="h-px bg-surface-200 flex-1" />
+            <span className="text-xs font-medium text-surface-400">or</span>
+            <div className="h-px bg-surface-200 flex-1" />
+          </div>
+
+          <button type="button" className="btn-outline w-full h-11 justify-center" onClick={signInWithGoogle} disabled={loading}>
+            <Chrome size={16} />
+            Continue with Google
+          </button>
+
           <p className="text-sm text-surface-500 text-center mt-6">
             Don't have an account?{" "}
             <Link to="/register" className="text-brand-500 font-semibold hover:text-brand-600 no-underline">
               Create account
+            </Link>
+          </p>
+          <p className="text-sm text-surface-500 text-center mt-3">
+            Want to look around first?{" "}
+            <Link to="/public-events" className="text-brand-500 font-semibold hover:text-brand-600 no-underline">
+              Browse events
             </Link>
           </p>
         </div>

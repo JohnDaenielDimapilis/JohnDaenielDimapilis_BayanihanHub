@@ -12,6 +12,8 @@ import MyDonations from "./pages/MyDonations.jsx";
 import Login from "./pages/Login.jsx";
 import Logs from "./pages/Logs.jsx";
 import Participants from "./pages/Participants.jsx";
+import Profile from "./pages/Profile.jsx";
+import PublicEvents from "./pages/PublicEvents.jsx";
 import Register from "./pages/Register.jsx";
 import Reports from "./pages/Reports.jsx";
 import Security from "./pages/Security.jsx";
@@ -21,6 +23,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/public-events" element={<PublicEvents />} />
       <Route
         path="/"
         element={
@@ -38,6 +41,7 @@ export default function App() {
         <Route path="my-donations" element={<MyDonations />} />
         <Route path="participants" element={<ProtectedRoute roles={["Admin", "Staff"]}><Participants /></ProtectedRoute>} />
         <Route path="feedback" element={<Feedback />} />
+        <Route path="profile" element={<Profile />} />
         <Route path="reports" element={<ProtectedRoute roles={["Admin", "Staff"]}><Reports /></ProtectedRoute>} />
         <Route path="logs" element={<ProtectedRoute roles={["Admin"]}><Logs /></ProtectedRoute>} />
         <Route path="security" element={<ProtectedRoute roles={["Admin"]}><Security /></ProtectedRoute>} />

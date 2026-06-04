@@ -8,10 +8,16 @@ import { SkeletonStats } from "../components/ui/Skeleton.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 
 const eventColors = {
-  pending: "#f59e0b",
+  draft: "#94a3b8",
+  "pending review": "#f59e0b",
   approved: "#22c55e",
+  "open for registration": "#14b8a6",
+  full: "#8b5cf6",
+  closed: "#64748b",
   rejected: "#ef4444",
   completed: "#3b82f6",
+  archived: "#475569",
+  cancelled: "#ef4444",
 };
 
 export default function Reports() {

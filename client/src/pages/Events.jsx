@@ -1,32 +1,97 @@
-import { CalendarDays, MapPin, Plus, Users } from "lucide-react";
-import { useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import {
+  Archive,
+  CalendarDays,
+  CheckCircle,
+  ClipboardCheck,
+  Edit3,
+  FileText,
+  MapPin,
+  Plus,
+  Send,
+  UserMinus,
+  Users,
+  XCircle
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { eventsApi, participantsApi } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import Modal from "../components/ui/Modal.jsx";
-import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
 import FormField from "../components/ui/FormField.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const blank = { title: "", type: "", description: "", date: "", time: "", location: "", participantLimit: 50 };
+const blank = {
+  title: "",
+  eventType: "",
+  description: "",
+  objectives: "",
+  date: "",
+  time: "",
+  location: "",
+  participantLimit: 50,
+  targetBeneficiaries: "",
+  requiredResources: "",
+  registrationStartDate: "",
+  registrationEndDate: "",
+  waitlistEnabled: true,
+  capacityRule: "Allow Waitlist"
+};
+
+const blankReport = {
+  attendanceCount: "",
+  noShowCount: "",
+  actualBeneficiariesServed: "",
+  outcomeSummary: "",
+  issuesEncountered: "",
+  recommendations: ""
+};
+
+function toDateInput(value) {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function ProgressCell({ value = 0 }) {
+  const pct = Math.max(0, Math.min(100, Number(value || 0)));
+  return (
+    <div className="min-w-[120px]">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-2xs font-semibold text-surface-500 uppercase">Progress</span>
+        <span className="text-xs font-semibold text-surface-700">{pct}%</span>
+      </div>
+      <div className="h-2 rounded-full bg-surface-100 overflow-hidden">
+        <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
 
 export default function Events() {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const [events, setEvents] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(blank);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [confirm, setConfirm] = useState(null);
-  const [joinedEvent, setJoinedEvent] = useState(null);
+  const [reportEvent, setReportEvent] = useState(null);
+  const [reportForm, setReportForm] = useState(blankReport);
 
   async function load() {
     try {
-      setEvents(await api("/events"));
+      const [eventData, registrationData] = await Promise.all([
+        eventsApi.getAll(),
+        user.role === "User" ? participantsApi.getMy().catch(() => []) : Promise.resolve([])
+      ]);
+      setEvents(eventData);
+      setRegistrations(registrationData);
     } catch (err) {
-      toast.error("Failed to load events");
+      toast.error(err.message || "Failed to load events");
     } finally {
       setLoading(false);
     }
@@ -34,13 +99,52 @@ export default function Events() {
 
   useEffect(() => { load(); }, []);
 
-  async function create(e) {
-    e.preventDefault();
+  const registrationByEvent = useMemo(() => {
+    return registrations.reduce((map, registration) => {
+      map[registration.eventId?._id || registration.eventId] = registration;
+      return map;
+    }, {});
+  }, [registrations]);
+
+  function openCreate() {
+    setEditingEvent(null);
+    setForm(blank);
+    setModalOpen(true);
+  }
+
+  function openEdit(event) {
+    setEditingEvent(event);
+    setForm({
+      title: event.title || "",
+      eventType: event.eventType || "",
+      description: event.description || "",
+      objectives: event.objectives || "",
+      date: toDateInput(event.date),
+      time: event.time || "",
+      location: event.location || "",
+      participantLimit: event.participantLimit || 50,
+      targetBeneficiaries: event.targetBeneficiaries || "",
+      requiredResources: event.requiredResources || "",
+      registrationStartDate: toDateInput(event.registrationStartDate),
+      registrationEndDate: toDateInput(event.registrationEndDate),
+      waitlistEnabled: event.waitlistEnabled !== false,
+      capacityRule: event.capacityRule || "Allow Waitlist"
+    });
+    setModalOpen(true);
+  }
+
+  async function saveEvent(mode) {
     setSubmitting(true);
+    const payload = { ...form, participantLimit: Number(form.participantLimit || 0), submitForReview: mode === "submit" };
     try {
-      await api("/events", { method: "POST", body: JSON.stringify(form) });
-      toast.success("Event submitted for approval");
+      if (editingEvent) {
+        await eventsApi.update(editingEvent._id, payload);
+      } else {
+        await eventsApi.create(payload);
+      }
+      toast.success(mode === "submit" ? "Event submitted for review" : "Event saved as draft");
       setForm(blank);
+      setEditingEvent(null);
       setModalOpen(false);
       load();
     } catch (err) {
@@ -50,30 +154,189 @@ export default function Events() {
     }
   }
 
-  async function doApproval(id, status) {
+  async function runAction(action, event) {
     try {
-      const endpoint = status === "Approved" ? `/events/${id}/approve` : `/events/${id}/reject`;
-      const body = status === "Rejected"
-        ? { rejectionReason: window.prompt("Reason for rejecting this event:") }
-        : {};
-      if (status === "Rejected" && !body.rejectionReason) return;
-      await api(endpoint, { method: "PATCH", body: JSON.stringify(body) });
-      toast.success(`Event ${status}`);
+      if (action === "submit") await eventsApi.submit(event._id);
+      if (action === "approve") {
+        await eventsApi.approve(event._id, {
+          approvalCriteria: { goalAligned: true, dateValid: true, resourcesAvailable: true, capacityReasonable: true },
+          approvalRemarks: "Approved after admin review."
+        });
+      }
+      if (action === "revision") {
+        const revisionRemarks = window.prompt("Revision remarks:");
+        if (!revisionRemarks) return;
+        await eventsApi.requestRevision(event._id, { revisionRemarks });
+      }
+      if (action === "reject") {
+        const rejectionReason = window.prompt("Reason for rejecting this event:");
+        if (!rejectionReason) return;
+        await eventsApi.reject(event._id, { rejectionReason });
+      }
+      if (action === "open") await eventsApi.openRegistration(event._id);
+      if (action === "close") await eventsApi.closeRegistration(event._id);
+      if (action === "archive") await eventsApi.archive(event._id);
+      if (action === "cancel") {
+        const cancellationReason = window.prompt("Reason for cancelling this event:");
+        if (!cancellationReason) return;
+        await eventsApi.cancel(event._id, { cancellationReason });
+      }
+      toast.success("Event updated");
       load();
     } catch (err) {
       toast.error(err.message);
     }
   }
 
-  async function join(id) {
+  async function join(event) {
     try {
-      await api(`/participants/events/${id}/join`, { method: "POST" });
-      const event = events.find(e => e._id === id);
-      setJoinedEvent(event);
+      await participantsApi.join(event._id);
+      toast.success(event.status === "Full" ? "Added to waitlist" : "Event joined");
       load();
     } catch (err) {
       toast.error(err.message);
     }
+  }
+
+  async function cancelRegistration(event) {
+    const cancellationReason = window.prompt("Why are you cancelling this registration?");
+    if (!cancellationReason) return;
+    try {
+      await participantsApi.cancel(event._id, { cancellationReason });
+      toast.success("Registration cancelled");
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function checkIn(event) {
+    try {
+      await participantsApi.checkIn(event._id);
+      toast.success("Check-in recorded");
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function submitReport(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await eventsApi.complete(reportEvent._id, {
+        postEventReport: {
+          ...reportForm,
+          attendanceCount: Number(reportForm.attendanceCount || 0),
+          noShowCount: Number(reportForm.noShowCount || 0),
+          actualBeneficiariesServed: Number(reportForm.actualBeneficiariesServed || 0)
+        }
+      });
+      toast.success("Post-event report submitted");
+      setReportEvent(null);
+      setReportForm(blankReport);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function canManage(row) {
+    const ownerId = row.createdBy?._id || row.createdBy;
+    return user.role === "Admin" || ownerId === user.id;
+  }
+
+  function renderActions(row) {
+    const registration = registrationByEvent[row._id];
+    const isManager = user.role !== "User" && canManage(row);
+
+    if (user.role === "User") {
+      if (registration && ["Joined", "Waitlisted"].includes(registration.participationStatus)) {
+        return (
+          <>
+            {registration.participationStatus === "Joined" && ["Open for Registration", "Full", "Closed", "Completed"].includes(row.status) && (
+              <button className="btn-primary btn-xs" onClick={() => checkIn(row)}>
+                <ClipboardCheck size={13} />
+                Check in
+              </button>
+            )}
+            {row.status === "Completed" && ["Present", "Verified"].includes(registration.attendanceStatus) && (
+              <button className="btn-outline btn-xs" onClick={() => navigate("/feedback")}>
+                <FileText size={13} />
+                Feedback
+              </button>
+            )}
+            <button className="btn-danger btn-xs" onClick={() => cancelRegistration(row)}>
+              <UserMinus size={13} />
+              Cancel
+            </button>
+          </>
+        );
+      }
+
+      if (row.status === "Open for Registration") {
+        return <button className="btn-primary btn-xs" onClick={() => join(row)}>Join</button>;
+      }
+      if (row.status === "Full") {
+        return <button className="btn-outline btn-xs" onClick={() => join(row)}>Waitlist</button>;
+      }
+      return null;
+    }
+
+    return (
+      <>
+        {["Draft", "Pending Review", "Rejected", "Approved"].includes(row.status) && isManager && (
+          <button className="btn-outline btn-xs" onClick={() => openEdit(row)}>
+            <Edit3 size={13} />
+            Edit
+          </button>
+        )}
+        {["Draft", "Rejected"].includes(row.status) && isManager && (
+          <button className="btn-primary btn-xs" onClick={() => runAction("submit", row)}>
+            <Send size={13} />
+            Submit
+          </button>
+        )}
+        {user.role === "Admin" && row.status === "Pending Review" && (
+          <>
+            <button className="btn-primary btn-xs" onClick={() => runAction("approve", row)}>
+              <CheckCircle size={13} />
+              Approve
+            </button>
+            <button className="btn-outline btn-xs" onClick={() => runAction("revision", row)}>
+              Revision
+            </button>
+            <button className="btn-danger btn-xs" onClick={() => runAction("reject", row)}>
+              <XCircle size={13} />
+              Reject
+            </button>
+          </>
+        )}
+        {row.status === "Approved" && isManager && (
+          <button className="btn-primary btn-xs" onClick={() => runAction("open", row)}>Open Registration</button>
+        )}
+        {["Open for Registration", "Full"].includes(row.status) && isManager && (
+          <>
+            <button className="btn-outline btn-xs" onClick={() => runAction("close", row)}>Close</button>
+            <button className="btn-danger btn-xs" onClick={() => runAction("cancel", row)}>Cancel</button>
+          </>
+        )}
+        {["Open for Registration", "Full", "Closed"].includes(row.status) && isManager && (
+          <button className="btn-primary btn-xs" onClick={() => { setReportEvent(row); setReportForm(blankReport); }}>
+            <FileText size={13} />
+            Report
+          </button>
+        )}
+        {row.status === "Completed" && isManager && (
+          <button className="btn-outline btn-xs" onClick={() => runAction("archive", row)}>
+            <Archive size={13} />
+            Archive
+          </button>
+        )}
+      </>
+    );
   }
 
   const columns = [
@@ -82,13 +345,13 @@ export default function Events() {
       header: "Event",
       accessor: "title",
       render: (row) => (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-[220px]">
           <div className="w-9 h-9 rounded-lg bg-info-50 text-info-600 flex items-center justify-center shrink-0">
             <CalendarDays size={16} />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-surface-900 truncate">{row.title}</p>
-            <p className="text-xs text-surface-500">{row.eventType || row.type}</p>
+            <p className="text-sm font-semibold text-surface-900 truncate">{row.title || "Untitled event"}</p>
+            <p className="text-xs text-surface-500">{row.eventType || "No type set"}</p>
           </div>
         </div>
       ),
@@ -99,7 +362,7 @@ export default function Events() {
       accessor: (row) => row.date,
       render: (row) => (
         <div>
-          <p className="text-sm text-surface-700">{new Date(row.date).toLocaleDateString()}</p>
+          <p className="text-sm text-surface-700">{row.date ? new Date(row.date).toLocaleDateString() : "Not set"}</p>
           {row.time && <p className="text-xs text-surface-400">{row.time}</p>}
         </div>
       ),
@@ -111,7 +374,7 @@ export default function Events() {
       render: (row) => (
         <span className="inline-flex items-center gap-1.5 text-sm text-surface-600">
           <MapPin size={13} className="text-surface-400" />
-          {row.location}
+          {row.location || "Not set"}
         </span>
       ),
     },
@@ -122,7 +385,7 @@ export default function Events() {
       render: (row) => (
         <span className="inline-flex items-center gap-1.5 text-sm text-surface-600">
           <Users size={13} className="text-surface-400" />
-          {row.participantLimit || "—"}
+          {row.participantLimit || 0}
         </span>
       ),
     },
@@ -133,26 +396,35 @@ export default function Events() {
       render: (row) => <StatusBadge value={row.status} />,
     },
     {
+      key: "progress",
+      header: "Progress",
+      accessor: "progressPercentage",
+      render: (row) => <ProgressCell value={row.progressPercentage} />,
+    },
+    {
+      key: "registration",
+      header: "My Registration",
+      sortable: false,
+      render: (row) => {
+        const registration = registrationByEvent[row._id];
+        if (user.role !== "User") return <span className="text-xs text-surface-400">-</span>;
+        if (!registration) return <span className="text-xs text-surface-400">Not joined</span>;
+        return (
+          <div className="space-y-1">
+            <StatusBadge value={registration.participationStatus} />
+            {registration.waitlistPosition && <p className="text-2xs text-surface-500">Position #{registration.waitlistPosition}</p>}
+            <p className="text-2xs text-surface-500">{registration.attendanceStatus}</p>
+          </div>
+        );
+      },
+    },
+    {
       key: "actions",
       header: "",
       sortable: false,
       render: (row) => (
-        <div className="flex items-center gap-2 justify-end">
-          {user.role === "Admin" && row.status === "Pending" && (
-            <>
-              <button className="btn-primary btn-xs" onClick={() => setConfirm({ id: row._id, action: "Approved", title: row.title })}>
-                Approve
-              </button>
-              <button className="btn-danger btn-xs" onClick={() => setConfirm({ id: row._id, action: "Rejected", title: row.title })}>
-                Reject
-              </button>
-            </>
-          )}
-          {user.role === "User" && ["Approved", "Published", "Open", "Full"].includes(row.status) && (
-            <button className="btn-primary btn-xs" onClick={() => join(row._id)}>
-              {row.status === "Full" ? "Waitlist" : "Join"}
-            </button>
-          )}
+        <div className="flex flex-wrap items-center gap-2 justify-end min-w-[220px]">
+          {renderActions(row)}
         </div>
       ),
     },
@@ -160,13 +432,13 @@ export default function Events() {
 
   return (
     <section className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div className="page-header mb-0">
           <h1>Events</h1>
-          <p>Manage and track all foundation events</p>
+          <p>Manage event review, registration, attendance, completion, and archive status</p>
         </div>
         {user.role !== "User" && (
-          <button className="btn-primary" onClick={() => setModalOpen(true)}>
+          <button className="btn-primary" onClick={openCreate}>
             <Plus size={16} />
             New Event
           </button>
@@ -179,111 +451,125 @@ export default function Events() {
         loading={loading}
         searchPlaceholder="Search events..."
         emptyTitle="No events yet"
-        emptyDescription="Get started by creating your first event."
+        emptyDescription="Create a draft event or open an approved event for registration."
         exportFilename="events"
       />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create New Event" description="Submit an event for admin approval.">
-        <form onSubmit={create} className="space-y-4">
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingEvent ? "Edit Event" : "Create Event"}
+        description="Save drafts freely, then submit complete event details for admin review."
+      >
+        <div className="space-y-4">
           <div className="form-grid">
             <FormField label="Title" required>
-              <input className="input" placeholder="Event title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+              <input className="input" placeholder="Event title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             </FormField>
-            <FormField label="Type" required>
-              <input className="input" placeholder="e.g. Workshop, Seminar" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} required />
+            <FormField label="Event Type" required>
+              <input className="input" placeholder="Workshop, outreach, clinic" value={form.eventType} onChange={(e) => setForm({ ...form, eventType: e.target.value })} />
             </FormField>
             <FormField label="Date" required>
-              <input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+              <input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             </FormField>
-            <FormField label="Time">
-              <input className="input" placeholder="e.g. 2:00 PM" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+            <FormField label="Time" required>
+              <input className="input" placeholder="2:00 PM" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
             </FormField>
             <FormField label="Location" required>
-              <input className="input" placeholder="Venue or address" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} required />
+              <input className="input" placeholder="Venue or address" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
             </FormField>
             <FormField label="Participant Limit" required>
-              <input type="number" min="1" className="input" value={form.participantLimit} onChange={(e) => setForm({ ...form, participantLimit: e.target.value })} required />
+              <input type="number" min="1" className="input" value={form.participantLimit} onChange={(e) => setForm({ ...form, participantLimit: e.target.value })} />
+            </FormField>
+            <FormField label="Registration Start" required>
+              <input type="date" className="input" value={form.registrationStartDate} onChange={(e) => setForm({ ...form, registrationStartDate: e.target.value })} />
+            </FormField>
+            <FormField label="Registration End" required>
+              <input type="date" className="input" value={form.registrationEndDate} onChange={(e) => setForm({ ...form, registrationEndDate: e.target.value })} />
             </FormField>
           </div>
+
           <FormField label="Description" required>
-            <textarea className="input" placeholder="Describe the event..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
+            <textarea className="input" placeholder="Describe the event" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </FormField>
+          <FormField label="Objectives" required>
+            <textarea className="input" placeholder="List the event objectives" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
+          </FormField>
+          <div className="form-grid">
+            <FormField label="Target Beneficiaries" required>
+              <textarea className="input" placeholder="Who will be served?" value={form.targetBeneficiaries} onChange={(e) => setForm({ ...form, targetBeneficiaries: e.target.value })} />
+            </FormField>
+            <FormField label="Required Resources" required>
+              <textarea className="input" placeholder="Resources, people, materials" value={form.requiredResources} onChange={(e) => setForm({ ...form, requiredResources: e.target.value })} />
+            </FormField>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
+            <label className="inline-flex items-center gap-2 text-sm text-surface-700">
+              <input
+                type="checkbox"
+                checked={form.waitlistEnabled}
+                onChange={(e) => setForm({ ...form, waitlistEnabled: e.target.checked })}
+              />
+              Allow waitlist
+            </label>
+            <select
+              className="input h-9 w-auto"
+              value={form.capacityRule}
+              onChange={(e) => setForm({ ...form, capacityRule: e.target.value })}
+            >
+              <option>Allow Waitlist</option>
+              <option>Block Registration</option>
+            </select>
+          </div>
+
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>
+            <button type="button" className="btn-outline" onClick={() => saveEvent("draft")} disabled={submitting}>
+              Save Draft
+            </button>
+            <button type="button" className="btn-primary" onClick={() => saveEvent("submit")} disabled={submitting}>
+              {submitting ? "Saving..." : "Submit for Review"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!reportEvent}
+        onClose={() => setReportEvent(null)}
+        title="Submit Post-Event Report"
+        description={reportEvent ? `Complete "${reportEvent.title || "this event"}" with outcome details.` : ""}
+      >
+        <form onSubmit={submitReport} className="space-y-4">
+          <div className="form-grid">
+            <FormField label="Attendance Count" required>
+              <input type="number" min="0" className="input" value={reportForm.attendanceCount} onChange={(e) => setReportForm({ ...reportForm, attendanceCount: e.target.value })} required />
+            </FormField>
+            <FormField label="No-show Count">
+              <input type="number" min="0" className="input" value={reportForm.noShowCount} onChange={(e) => setReportForm({ ...reportForm, noShowCount: e.target.value })} />
+            </FormField>
+            <FormField label="Beneficiaries Served" required>
+              <input type="number" min="0" className="input" value={reportForm.actualBeneficiariesServed} onChange={(e) => setReportForm({ ...reportForm, actualBeneficiariesServed: e.target.value })} required />
+            </FormField>
+          </div>
+          <FormField label="Outcome Summary" required>
+            <textarea className="input" value={reportForm.outcomeSummary} onChange={(e) => setReportForm({ ...reportForm, outcomeSummary: e.target.value })} required />
+          </FormField>
+          <FormField label="Issues Encountered">
+            <textarea className="input" value={reportForm.issuesEncountered} onChange={(e) => setReportForm({ ...reportForm, issuesEncountered: e.target.value })} />
+          </FormField>
+          <FormField label="Recommendations">
+            <textarea className="input" value={reportForm.recommendations} onChange={(e) => setReportForm({ ...reportForm, recommendations: e.target.value })} />
+          </FormField>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" className="btn-outline" onClick={() => setReportEvent(null)}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? "Submitting..." : "Submit Event"}
+              {submitting ? "Submitting..." : "Submit Report"}
             </button>
           </div>
         </form>
       </Modal>
-
-      <ConfirmDialog
-        open={!!confirm}
-        title={`${confirm?.action === "Approved" ? "Approve" : "Reject"} Event?`}
-        message={`Are you sure you want to ${confirm?.action === "Approved" ? "approve" : "reject"} "${confirm?.title}"?`}
-        confirmLabel={confirm?.action === "Approved" ? "Approve" : "Reject"}
-        variant={confirm?.action === "Approved" ? "primary" : "danger"}
-        onConfirm={() => { doApproval(confirm.id, confirm.action); setConfirm(null); }}
-        onCancel={() => setConfirm(null)}
-      />
-
-      {joinedEvent && (
-        <Modal 
-          open={!!joinedEvent} 
-          onClose={() => setJoinedEvent(null)} 
-          title="✓ Successfully Joined Event" 
-          description="You are now registered for this event"
-        >
-          <div className="space-y-6">
-            <div className="bg-success-50 border border-success-200 rounded-lg p-4">
-              <p className="text-sm text-success-700 font-medium">You have successfully joined this event and will receive updates about it.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-semibold text-surface-500 uppercase">Event Title</p>
-                <p className="text-sm font-semibold text-surface-900 mt-1">{joinedEvent.title}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-semibold text-surface-500 uppercase">Date</p>
-                  <p className="text-sm text-surface-700 mt-1">{new Date(joinedEvent.date).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-surface-500 uppercase">Time</p>
-                  <p className="text-sm text-surface-700 mt-1">{joinedEvent.time || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-surface-500 uppercase">Location</p>
-                  <p className="text-sm text-surface-700 mt-1">{joinedEvent.location}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-surface-500 uppercase">Capacity</p>
-                  <p className="text-sm text-surface-700 mt-1">{joinedEvent.participantLimit} participants</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold text-surface-500 uppercase">Description</p>
-                <p className="text-sm text-surface-600 mt-1">{joinedEvent.description}</p>
-              </div>
-
-              <div className="bg-info-50 border border-info-200 rounded-lg p-3">
-                <p className="text-xs font-medium text-info-700">
-                  📧 Check your email for event details and updates
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button className="btn-primary" onClick={() => setJoinedEvent(null)}>
-                Done
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </section>
   );
 }

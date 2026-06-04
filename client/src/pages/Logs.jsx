@@ -9,6 +9,7 @@ export default function Logs() {
   const toast = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState("all");
 
   useEffect(() => {
     api("/logs")
@@ -16,6 +17,16 @@ export default function Logs() {
       .catch(() => toast.error("Failed to load activity logs"))
       .finally(() => setLoading(false));
   }, []);
+
+  const filteredLogs = logs.filter((log) => {
+    if (period === "all") return true;
+    const created = new Date(log.createdAt);
+    const now = new Date();
+    if (period === "day") return created.toDateString() === now.toDateString();
+    if (period === "month") return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+    if (period === "year") return created.getFullYear() === now.getFullYear();
+    return true;
+  });
 
   const columns = [
     {
@@ -99,7 +110,7 @@ export default function Logs() {
       </div>
 
       <DataTable
-        data={logs}
+        data={filteredLogs}
         columns={columns}
         loading={loading}
         searchPlaceholder="Search logs by user, action, module..."
@@ -107,6 +118,14 @@ export default function Logs() {
         emptyDescription="Activity logs will appear here as users interact with the system."
         exportFilename="activity-logs"
         pageSize={25}
+        actions={(
+          <select className="input h-9 w-auto text-sm" value={period} onChange={(e) => setPeriod(e.target.value)}>
+            <option value="all">All time</option>
+            <option value="day">Today</option>
+            <option value="month">This month</option>
+            <option value="year">This year</option>
+          </select>
+        )}
       />
     </section>
   );
