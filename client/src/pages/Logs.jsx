@@ -2,7 +2,6 @@ import { ClipboardList, Clock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
-import StatusBadge from "../components/StatusBadge.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 
 export default function Logs() {
@@ -77,14 +76,8 @@ export default function Logs() {
       ),
     },
     {
-      key: "outcome",
-      header: "Outcome",
-      accessor: (row) => row.outcome || row.status,
-      render: (row) => <StatusBadge value={row.outcome || row.status} />,
-    },
-    {
       key: "reason",
-      header: "Reason / Record",
+      header: "Details",
       accessor: (row) => row.reason || row.details?.reason || row.details?.rejectionReason || row.relatedRecordId || "",
       render: (row) => (
         <div className="max-w-[260px]">

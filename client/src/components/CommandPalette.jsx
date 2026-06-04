@@ -1,6 +1,6 @@
 import {
   Award, CalendarDays, ChartNoAxesCombined, ClipboardList, Gift, HandCoins,
-  LayoutDashboard, MessageSquare, Search, ShieldCheck, UserCog, Users
+  History, Inbox, LayoutDashboard, MessageSquare, Search, UserCog, Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -9,15 +9,16 @@ import { useAuth } from "../context/AuthContext.jsx";
 const allPages = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, keywords: "home overview" },
   { to: "/events", label: "Events", icon: CalendarDays, keywords: "event calendar" },
+  { to: "/history", label: "History", icon: History, keywords: "joined event attendance feedback" },
   { to: "/fundraisers", label: "Fundraisers", icon: Gift, keywords: "campaign fundraising" },
   { to: "/donations", label: "Donations", icon: HandCoins, keywords: "donate money" },
   { to: "/participants", label: "Participants", icon: Users, keywords: "attendees members", roles: ["Admin", "Staff"] },
-  { to: "/feedback", label: "Feedback", icon: MessageSquare, keywords: "comments reviews", },
+  { to: "/feedback", label: "Feedback Analytics", icon: MessageSquare, keywords: "comments reviews ratings", roles: ["Admin", "Staff"] },
   { to: "/achievements", label: "Achievements", icon: Award, keywords: "badges points" },
   { to: "/accounts", label: "Accounts", icon: UserCog, keywords: "users accounts admin", roles: ["Admin"] },
+  { to: "/approval-requests", label: "Approval Requests", icon: Inbox, keywords: "review approve reject pending", roles: ["Admin", "Staff"] },
   { to: "/reports", label: "Reports", icon: ChartNoAxesCombined, keywords: "analytics data", roles: ["Admin", "Staff"] },
   { to: "/logs", label: "Activity Logs", icon: ClipboardList, keywords: "audit trail", roles: ["Admin"] },
-  { to: "/security", label: "Security", icon: ShieldCheck, keywords: "security access", roles: ["Admin"] },
 ];
 
 export default function CommandPalette({ open, onClose }) {

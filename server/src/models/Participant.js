@@ -6,7 +6,7 @@ const participantSchema = new mongoose.Schema(
     eventId: { type: mongoose.Schema.Types.ObjectId, ref: "Event", required: true },
     attendanceStatus: {
       type: String,
-      enum: ["Pending", "Present", "Absent", "No-show", "Verified"],
+      enum: ["Pending", "Present", "Absent"],
       default: "Pending"
     },
     participationStatus: {
@@ -19,6 +19,11 @@ const participantSchema = new mongoose.Schema(
     cancellationReason: { type: String, trim: true },
     waitlistPosition: { type: Number, min: 1 },
     checkInCode: { type: String, trim: true },
+    checkInMethod: {
+      type: String,
+      enum: ["QR", "Manual"],
+      default: "QR"
+    },
     checkedInAt: { type: Date },
     verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     attendanceRemarks: { type: String, trim: true }

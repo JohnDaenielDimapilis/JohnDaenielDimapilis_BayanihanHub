@@ -7,12 +7,17 @@ import {
   completeEvent,
   createEvent,
   deleteEvent,
+  generateEventQr,
+  getEventHistory,
   getEventById,
+  getEventQr,
   getEvents,
+  getUserVisibleEvents,
   openRegistrationEvent,
   publicEvents,
   rejectEvent,
   requestRevisionEvent,
+  scanEventQr,
   submitEvent,
   updateEvent
 } from "../controllers/eventController.js";
@@ -24,6 +29,8 @@ router.get("/public", publicEvents);
 
 router.use(protect);
 router.get("/", getEvents);
+router.get("/user-visible", getUserVisibleEvents);
+router.get("/history", getEventHistory);
 router.get("/:id", getEventById);
 router.post("/", authorize("Admin", "Staff"), createEvent);
 router.put("/:id", authorize("Admin", "Staff"), updateEvent);
@@ -36,6 +43,10 @@ router.patch("/:id/open-registration", authorize("Admin", "Staff"), openRegistra
 router.patch("/:id/close-registration", authorize("Admin", "Staff"), closeRegistrationEvent);
 router.patch("/:id/cancel", authorize("Admin", "Staff"), cancelEvent);
 router.patch("/:id/complete", authorize("Admin", "Staff"), completeEvent);
+router.patch("/:id/finish", authorize("Admin", "Staff"), completeEvent);
 router.patch("/:id/archive", authorize("Admin", "Staff"), archiveEvent);
+router.post("/:id/generate-qr", authorize("Admin", "Staff"), generateEventQr);
+router.get("/:id/qr", authorize("Admin", "Staff"), getEventQr);
+router.post("/:id/scan-qr", authorize("User"), scanEventQr);
 
 export default router;

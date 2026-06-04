@@ -18,7 +18,16 @@ export async function protect(req, res, next) {
       return res.status(401).json({ message: "Not authorized. User not found." });
     }
 
-    if (req.user.isActive === false) {
+    if (req.user.accountStatus === "Temporarily Banned" && req.user.banUntil && new Date(req.user.banUntil) <= new Date()) {
+      req.user.accountStatus = "Active";
+      req.user.banUntil = undefined;
+      req.user.banReason = undefined;
+      req.user.bannedBy = undefined;
+      req.user.isActive = true;
+      await req.user.save();
+    }
+
+    if (req.user.isActive === false || req.user.accountStatus === "Disabled" || req.user.accountStatus === "Temporarily Banned") {
       await createLog({
         userId: req.user._id,
         role: req.user.role,
@@ -30,10 +39,16 @@ export async function protect(req, res, next) {
           path: req.originalUrl,
           ipAddress: req.ip,
           userAgent: req.get("user-agent"),
-          reason: "Account is inactive."
+          reason: req.user.accountStatus === "Temporarily Banned"
+            ? `Account is temporarily banned until ${new Date(req.user.banUntil).toLocaleString()}.`
+            : "Account is inactive."
         }
       });
-      return res.status(403).json({ message: "Account is inactive." });
+      return res.status(403).json({
+        message: req.user.accountStatus === "Temporarily Banned"
+          ? `Account is temporarily banned until ${new Date(req.user.banUntil).toLocaleString()}.`
+          : "Account is inactive."
+      });
     }
 
     next();

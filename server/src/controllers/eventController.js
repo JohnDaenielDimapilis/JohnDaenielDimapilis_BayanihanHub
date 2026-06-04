@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import Event from "../models/Event.js";
 import Participant from "../models/Participant.js";
 import User from "../models/User.js";
@@ -29,6 +30,46 @@ const EVENT_FIELDS = [
 
 function eventTitle(event) {
   return event.title || "Untitled event";
+}
+
+function isPastEventDate(event) {
+  if (!event.date) return false;
+  const eventDate = new Date(event.date);
+  if (Number.isNaN(eventDate.getTime())) return false;
+  eventDate.setHours(23, 59, 59, 999);
+  return eventDate < new Date();
+}
+
+async function refreshEventStatus(event) {
+  if (event.status === "Completed") {
+    event.status = "Finished";
+    await event.save();
+  }
+
+  if (isPastEventDate(event) && ["Open for Registration", "Full", "Closed"].includes(event.status)) {
+    event.status = "Finished";
+    event.completedAt = event.completedAt || new Date();
+    await event.save();
+  }
+
+  return event;
+}
+
+async function enrichEvents(events) {
+  const enriched = [];
+  for (const event of events) {
+    await refreshEventStatus(event);
+    const joinedCount = await Participant.countDocuments({ eventId: event._id, participationStatus: "Joined" });
+    const waitlistCount = await Participant.countDocuments({ eventId: event._id, participationStatus: "Waitlisted" });
+    enriched.push({
+      ...event.toObject(),
+      joinedCount,
+      waitlistCount,
+      capacityDisplay: `${joinedCount}/${event.participantLimit || 0}`,
+      userDisplayStatus: event.status === "Finished" ? "Finished" : event.status
+    });
+  }
+  return enriched;
 }
 
 function applyEventFields(event, body) {
@@ -159,7 +200,7 @@ export async function publicEvents(req, res) {
       .populate("createdBy", "name email role")
       .sort({ date: 1 });
 
-    res.status(200).json(events);
+    res.status(200).json(await enrichEvents(events));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch public events.", error: error.message });
   }
@@ -175,7 +216,7 @@ export async function getEvents(req, res) {
       .populate("revisionRequestedBy", "name email role")
       .sort({ date: 1, createdAt: -1 });
 
-    res.status(200).json(events);
+    res.status(200).json(await enrichEvents(events));
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch events.", error: error.message });
   }
@@ -198,7 +239,8 @@ export async function getEventById(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    res.status(200).json(event);
+    const [enriched] = await enrichEvents([event]);
+    res.status(200).json(enriched);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch event.", error: error.message });
   }
@@ -499,6 +541,8 @@ export async function cancelEvent(req, res) {
     const oldStatus = event.status;
     event.status = "Cancelled";
     event.cancellationReason = req.body.cancellationReason;
+    event.cancelledAt = new Date();
+    event.cancelledBy = req.user._id;
     await event.save();
 
     await Participant.updateMany(
@@ -526,7 +570,7 @@ export async function completeEvent(req, res) {
 
     if (!ensureStaffOwnsEvent(req, event, res)) return;
     if (!["Closed", "Open for Registration", "Full"].includes(event.status)) {
-      return res.status(400).json({ message: "Only closed or registration-stage events can be completed." });
+      return res.status(400).json({ message: "Only closed or registration-stage events can be finished." });
     }
 
     const report = req.body.postEventReport || req.body;
@@ -537,7 +581,7 @@ export async function completeEvent(req, res) {
     }
 
     const oldStatus = event.status;
-    event.status = "Completed";
+    event.status = "Finished";
     event.completedAt = new Date();
     event.postEventReport = {
       attendanceCount: Number(report.attendanceCount || 0),
@@ -554,11 +598,11 @@ export async function completeEvent(req, res) {
     await event.save();
 
     await Participant.updateMany(
-      { eventId: event._id, participationStatus: "Joined", attendanceStatus: { $in: ["Pending", "Present", "Verified"] } },
+      { eventId: event._id, participationStatus: "Joined", attendanceStatus: { $in: ["Pending", "Present"] } },
       { participationStatus: "Completed" }
     );
 
-    await logEventChange(req, event, "Event Completed", oldStatus, {
+    await logEventChange(req, event, "Event Finished", oldStatus, {
       newValue: {
         status: event.status,
         progressPercentage: event.progressPercentage,
@@ -568,7 +612,7 @@ export async function completeEvent(req, res) {
 
     const attendedParticipants = await Participant.find({
       eventId: event._id,
-      attendanceStatus: { $in: ["Present", "Verified"] }
+      attendanceStatus: "Present"
     }).select("userId");
     await createNotifications(attendedParticipants.map((participant) => ({
       userId: participant.userId,
@@ -578,7 +622,7 @@ export async function completeEvent(req, res) {
       relatedRecordId: event._id
     })));
 
-    res.status(200).json({ message: "Event completed successfully.", event });
+    res.status(200).json({ message: "Event finished successfully.", event });
   } catch (error) {
     res.status(500).json({ message: "Event completion failed.", error: error.message });
   }
@@ -589,8 +633,8 @@ export async function archiveEvent(req, res) {
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: "Event not found." });
     if (!ensureStaffOwnsEvent(req, event, res)) return;
-    if (event.status !== "Completed") {
-      return res.status(400).json({ message: "Only completed events can be archived." });
+    if (event.status !== "Finished") {
+      return res.status(400).json({ message: "Only finished events can be archived." });
     }
 
     const oldStatus = event.status;
@@ -601,5 +645,162 @@ export async function archiveEvent(req, res) {
     res.status(200).json({ message: "Event archived successfully.", event });
   } catch (error) {
     res.status(500).json({ message: "Event archive failed.", error: error.message });
+  }
+}
+
+export async function getUserVisibleEvents(req, res) {
+  try {
+    const events = await Event.find({ status: { $in: USER_VISIBLE_EVENT_STATUSES } })
+      .populate("createdBy", "name email role")
+      .sort({ date: 1 });
+    res.status(200).json(await enrichEvents(events));
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch user-visible events.", error: error.message });
+  }
+}
+
+export async function getEventHistory(req, res) {
+  try {
+    if (req.user.role === "User") {
+      const participants = await Participant.find({ userId: req.user._id })
+        .populate({
+          path: "eventId",
+          populate: { path: "createdBy", select: "name email role" }
+        })
+        .sort({ joinedAt: -1 });
+      return res.status(200).json(participants);
+    }
+
+    const filter = req.user.role === "Staff" ? { createdBy: req.user._id } : {};
+    const events = await Event.find({ ...filter, status: { $in: ["Finished", "Cancelled", "Archived"] } })
+      .populate("createdBy", "name email role")
+      .sort({ date: -1 });
+    res.status(200).json(await enrichEvents(events));
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch event history.", error: error.message });
+  }
+}
+
+export async function generateEventQr(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (event.status === "Cancelled") {
+      return res.status(400).json({ message: "Cancelled events cannot generate QR attendance codes." });
+    }
+    const eventStart = new Date(event.date);
+    const today = new Date();
+    eventStart.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(eventStart.getTime()) || eventStart > today) {
+      return res.status(400).json({ message: "Attendance QR can be generated only once the event starts." });
+    }
+
+    const expiresAt = new Date(event.date || Date.now());
+    expiresAt.setDate(expiresAt.getDate() + 1);
+    expiresAt.setHours(23, 59, 59, 999);
+
+    event.qrCodeToken = randomBytes(16).toString("hex");
+    event.qrGeneratedAt = new Date();
+    event.qrExpiresAt = expiresAt;
+    await event.save();
+
+    await logEventChange(req, event, "Generated Event QR", event.status, {
+      newValue: { qrGeneratedAt: event.qrGeneratedAt, qrExpiresAt: event.qrExpiresAt }
+    });
+
+    res.status(200).json({
+      message: "Event QR code generated.",
+      qrCodeToken: event.qrCodeToken,
+      qrGeneratedAt: event.qrGeneratedAt,
+      qrExpiresAt: event.qrExpiresAt,
+      qrData: `${event._id}:${event.qrCodeToken}`
+    });
+  } catch (error) {
+    res.status(500).json({ message: "QR generation failed.", error: error.message });
+  }
+}
+
+export async function getEventQr(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (!event.qrCodeToken) return res.status(404).json({ message: "QR code has not been generated yet." });
+
+    res.status(200).json({
+      qrCodeToken: event.qrCodeToken,
+      qrGeneratedAt: event.qrGeneratedAt,
+      qrExpiresAt: event.qrExpiresAt,
+      qrData: `${event._id}:${event.qrCodeToken}`
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch QR code.", error: error.message });
+  }
+}
+
+export async function scanEventQr(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    await refreshEventStatus(event);
+
+    const token = String(req.body.qrCodeToken || req.body.token || "").trim();
+    if (!token || token !== event.qrCodeToken) {
+      return res.status(400).json({ message: "Invalid QR code for this event." });
+    }
+    if (event.status === "Cancelled") {
+      return res.status(400).json({ message: "Cancelled events cannot accept attendance." });
+    }
+    if (!event.qrCodeToken || (event.qrExpiresAt && new Date(event.qrExpiresAt) < new Date())) {
+      return res.status(400).json({ message: "This QR code is expired or not active." });
+    }
+    const eventDate = new Date(event.date);
+    const today = new Date();
+    eventDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    if (eventDate > today) {
+      return res.status(400).json({ message: "Attendance QR can be scanned only once the event starts." });
+    }
+
+    const participant = await Participant.findOne({
+      userId: req.user._id,
+      eventId: event._id,
+      participationStatus: { $in: ["Joined", "Completed"] }
+    });
+
+    if (!participant) {
+      return res.status(403).json({ message: "You must join this event before scanning its QR code." });
+    }
+    if (participant.attendanceStatus === "Present") {
+      return res.status(409).json({ message: "Attendance was already marked as present." });
+    }
+
+    participant.attendanceStatus = "Present";
+    participant.checkedInAt = new Date();
+    participant.checkInCode = token;
+    participant.checkInMethod = "QR";
+    await participant.save();
+
+    await createLog({
+      userId: req.user._id,
+      role: req.user.role,
+      action: "Scanned Attendance QR",
+      module: "Participant",
+      status: "Success",
+      details: {
+        recordId: participant._id,
+        eventId: event._id,
+        recordOwner: event.createdBy,
+        newValue: { attendanceStatus: participant.attendanceStatus, checkInMethod: participant.checkInMethod },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent")
+      }
+    });
+
+    res.status(200).json({ message: "Attendance marked as Present.", participant });
+  } catch (error) {
+    res.status(500).json({ message: "QR scan failed.", error: error.message });
   }
 }

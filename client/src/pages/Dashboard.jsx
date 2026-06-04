@@ -1,7 +1,8 @@
-import { ArrowRight, CalendarDays, Gift, HandCoins, Hourglass, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, Download, Gift, HandCoins, Hourglass, QrCode, ScanLine, TrendingUp, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, eventsApi, participantsApi } from "../api/client.js";
+import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
 import BarChart from "../components/charts/BarChart.jsx";
 import DonutChart from "../components/charts/DonutChart.jsx";
 import StatCard from "../components/StatCard.jsx";
@@ -12,49 +13,60 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [events, setEvents] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [fundraisers, setFundraisers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [qrPayload, setQrPayload] = useState("");
+  const [qrMessage, setQrMessage] = useState("");
+  const [exportDates, setExportDates] = useState({ startDate: "", endDate: "" });
 
   useEffect(() => {
     Promise.all([
       api("/dashboard"),
       api("/events").catch(() => []),
       api("/fundraisers").catch(() => []),
+      user.role === "User" ? participantsApi.getMy().catch(() => []) : Promise.resolve([])
     ])
-      .then(([s, e, f]) => { setStats(s); setEvents(e); setFundraisers(f); })
+      .then(([summary, eventRows, fundraiserRows, registrationRows]) => {
+        setStats(summary);
+        setEvents(eventRows);
+        setFundraisers(fundraiserRows);
+        setRegistrations(registrationRows);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [user.role]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const normalizeStatus = (status) => String(status || "").toLowerCase();
 
   const eventStatusData = events.length ? [
-    { label: "Draft", value: events.filter((e) => normalizeStatus(e.status) === "draft").length, color: "#94a3b8" },
-    { label: "Pending Review", value: events.filter((e) => normalizeStatus(e.status) === "pending review").length, color: "#f59e0b" },
-    { label: "Approved", value: events.filter((e) => normalizeStatus(e.status) === "approved").length, color: "#22c55e" },
-    { label: "Open", value: events.filter((e) => normalizeStatus(e.status) === "open for registration").length, color: "#14b8a6" },
-    { label: "Full", value: events.filter((e) => normalizeStatus(e.status) === "full").length, color: "#8b5cf6" },
-    { label: "Closed", value: events.filter((e) => normalizeStatus(e.status) === "closed").length, color: "#64748b" },
-    { label: "Completed", value: events.filter((e) => normalizeStatus(e.status) === "completed").length, color: "#3b82f6" },
-    { label: "Cancelled", value: events.filter((e) => normalizeStatus(e.status) === "cancelled").length, color: "#ef4444" },
-    { label: "Rejected", value: events.filter((e) => normalizeStatus(e.status) === "rejected").length, color: "#dc2626" },
-    { label: "Archived", value: events.filter((e) => normalizeStatus(e.status) === "archived").length, color: "#475569" },
-  ].filter((d) => d.value > 0) : [];
+    { label: "Draft", value: events.filter((event) => normalizeStatus(event.status) === "draft").length, color: "#94a3b8" },
+    { label: "Pending Review", value: events.filter((event) => normalizeStatus(event.status) === "pending review").length, color: "#f59e0b" },
+    { label: "Approved", value: events.filter((event) => normalizeStatus(event.status) === "approved").length, color: "#22c55e" },
+    { label: "Open", value: events.filter((event) => normalizeStatus(event.status) === "open for registration").length, color: "#14b8a6" },
+    { label: "Full", value: events.filter((event) => normalizeStatus(event.status) === "full").length, color: "#8b5cf6" },
+    { label: "Closed", value: events.filter((event) => normalizeStatus(event.status) === "closed").length, color: "#64748b" },
+    { label: "Finished", value: events.filter((event) => normalizeStatus(event.status) === "finished").length, color: "#3b82f6" },
+    { label: "Cancelled", value: events.filter((event) => normalizeStatus(event.status) === "cancelled").length, color: "#ef4444" },
+    { label: "Rejected", value: events.filter((event) => normalizeStatus(event.status) === "rejected").length, color: "#dc2626" },
+    { label: "Archived", value: events.filter((event) => normalizeStatus(event.status) === "archived").length, color: "#475569" },
+  ].filter((item) => item.value > 0) : [];
 
   const topFundraisers = fundraisers
-    .filter((f) => ["approved", "closed"].includes(normalizeStatus(f.status)))
+    .filter((fundraiser) => ["approved", "closed"].includes(normalizeStatus(fundraiser.status)))
     .sort((a, b) => b.raisedAmount - a.raisedAmount)
     .slice(0, 5);
 
-  const fundraiserChartData = topFundraisers.map((f) => ({
-    label: f.title?.slice(0, 12) || "Untitled",
-    value: f.raisedAmount || 0,
+  const fundraiserChartData = topFundraisers.map((fundraiser) => ({
+    label: fundraiser.title?.slice(0, 12) || "Untitled",
+    value: fundraiser.raisedAmount || 0,
     color: "#1d8b67",
   }));
 
   const recentEvents = events.slice(0, 5);
+  const joinedRegistrations = registrations.filter((item) => ["Joined", "Completed"].includes(item.participationStatus));
 
   const quickActions = [
     { label: "Create Event", to: "/events", icon: CalendarDays, color: "bg-info-50 text-info-600" },
@@ -63,15 +75,88 @@ export default function Dashboard() {
     { label: "View Participants", to: "/participants", icon: Users, color: "bg-purple-50 text-purple-600" },
   ];
 
+  async function scanQr() {
+    setQrMessage("");
+    const raw = qrPayload.trim();
+    if (!raw) {
+      setQrMessage("Enter the event QR payload or token.");
+      return;
+    }
+
+    const [eventIdFromPayload, tokenFromPayload] = raw.includes(":") ? raw.split(":") : ["", raw];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bestRegistration = joinedRegistrations.find((item) => {
+      const event = item.eventId || {};
+      const eventDate = new Date(event.date);
+      eventDate.setHours(0, 0, 0, 0);
+      return !Number.isNaN(eventDate.getTime()) && eventDate <= today && !["Finished", "Cancelled"].includes(event.status);
+    }) || joinedRegistrations[0];
+    const eventId = eventIdFromPayload || bestRegistration?.eventId?._id || bestRegistration?.eventId;
+    if (!eventId) {
+      setQrMessage("Join an event first before scanning attendance.");
+      return;
+    }
+
+    try {
+      const result = await eventsApi.scanQr(eventId, { qrCodeToken: tokenFromPayload });
+      setQrMessage(result.message || "Attendance marked as Present.");
+      setQrPayload("");
+    } catch (err) {
+      setQrMessage(err.message);
+    }
+  }
+
+  function exportDashboardSummary() {
+    const lines = [
+      "BayanihanHub Dashboard Export",
+      `Generated,${new Date().toLocaleString()}`,
+      `Start Date,${exportDates.startDate || "All"}`,
+      `End Date,${exportDates.endDate || "All"}`,
+      "",
+      "Metric,Value",
+      `Total Events,${stats?.events ?? 0}`,
+      `Fundraisers,${stats?.fundraisers ?? 0}`,
+      `Pending Approvals,${stats?.pendingApprovals ?? 0}`,
+      `Total Donations,${Number(stats?.donationTotal || 0)}`
+    ].join("\n");
+    const blob = new Blob([lines], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "dashboard-summary.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-surface-900 tracking-tight">
-          {greeting}, {user.name?.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-surface-500 mt-1">
-          Here's what's happening across your foundation today.
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-12 h-12 rounded-lg shrink-0" />
+          <div>
+            <h1 className="text-2xl font-bold text-surface-900 tracking-tight">
+              {greeting}, {user.name?.split(" ")[0]}
+            </h1>
+            <p className="text-sm text-surface-500 mt-1">
+              Here's what's happening across your foundation today.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
+          <label className="text-xs font-semibold text-surface-500">
+            Start
+            <input type="date" className="input h-9 mt-1" value={exportDates.startDate} onChange={(e) => setExportDates({ ...exportDates, startDate: e.target.value })} />
+          </label>
+          <label className="text-xs font-semibold text-surface-500">
+            End
+            <input type="date" className="input h-9 mt-1" value={exportDates.endDate} onChange={(e) => setExportDates({ ...exportDates, endDate: e.target.value })} />
+          </label>
+          <button className="btn-outline h-9" onClick={exportDashboardSummary}>
+            <Download size={14} />
+            Export
+          </button>
+        </div>
       </div>
 
       {loading ? <SkeletonStats count={4} /> : (
@@ -106,6 +191,35 @@ export default function Dashboard() {
         </div>
       )}
 
+      {user.role === "User" && (
+        <div className="card-padded">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-lg bg-info-50 text-info-600 flex items-center justify-center shrink-0">
+                <QrCode size={18} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-surface-900">QR Attendance Scanner</h3>
+                <p className="text-sm text-surface-500">Paste the event QR payload from staff. Demo token: DEMO-TODAY-QR.</p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+              <input
+                className="input h-10 lg:w-80"
+                placeholder="eventId:token or token"
+                value={qrPayload}
+                onChange={(e) => setQrPayload(e.target.value)}
+              />
+              <button className="btn-primary h-10" onClick={scanQr}>
+                <ScanLine size={15} />
+                Scan
+              </button>
+            </div>
+          </div>
+          {qrMessage && <p className="mt-3 text-sm font-medium text-surface-700">{qrMessage}</p>}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card-padded lg:col-span-2">
           <div className="flex items-center justify-between mb-5">
@@ -120,14 +234,14 @@ export default function Dashboard() {
             <div className="space-y-3">
               {recentEvents.map((event) => (
                 <div key={event._id} className="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-50 transition-colors">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${normalizeStatus(event.status) === "approved" ? "bg-success-50 text-success-600" : normalizeStatus(event.status) === "pending" ? "bg-warning-50 text-warning-600" : "bg-danger-50 text-danger-600"}`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${normalizeStatus(event.status) === "approved" ? "bg-success-50 text-success-600" : normalizeStatus(event.status) === "pending review" ? "bg-warning-50 text-warning-600" : "bg-info-50 text-info-600"}`}>
                     <CalendarDays size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-surface-900 truncate">{event.title}</p>
-                    <p className="text-xs text-surface-500">{event.location} · {new Date(event.date).toLocaleDateString()}</p>
+                    <p className="text-xs text-surface-500">{event.location} - {event.date ? new Date(event.date).toLocaleDateString() : "No date"}</p>
                   </div>
-                  <span className={`badge ${normalizeStatus(event.status) === "approved" ? "badge-success" : normalizeStatus(event.status) === "pending" ? "badge-warning" : "badge-danger"}`}>
+                  <span className={`badge ${normalizeStatus(event.status) === "approved" ? "badge-success" : normalizeStatus(event.status) === "pending review" ? "badge-warning" : "badge-info"}`}>
                     {event.status}
                   </span>
                 </div>
@@ -163,12 +277,12 @@ export default function Dashboard() {
           <div className="card-padded">
             <h3 className="text-base font-semibold text-surface-900 mb-5">Fundraiser Progress</h3>
             <div className="space-y-4">
-              {topFundraisers.map((f) => {
-                const pct = Math.min(100, Math.round((f.raisedAmount / f.targetAmount) * 100));
+              {topFundraisers.map((fundraiser) => {
+                const pct = Math.min(100, Math.round((fundraiser.raisedAmount / fundraiser.targetAmount) * 100));
                 return (
-                  <div key={f._id}>
+                  <div key={fundraiser._id}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm font-medium text-surface-700 truncate">{f.title}</span>
+                      <span className="text-sm font-medium text-surface-700 truncate">{fundraiser.title}</span>
                       <span className="text-xs font-semibold text-surface-500">{pct}%</span>
                     </div>
                     <div className="w-full h-2 rounded-full bg-surface-100 overflow-hidden">
@@ -178,8 +292,8 @@ export default function Dashboard() {
                       />
                     </div>
                     <div className="flex justify-between mt-1">
-                      <span className="text-2xs text-surface-400">PHP {Number(f.raisedAmount).toLocaleString()}</span>
-                      <span className="text-2xs text-surface-400">PHP {Number(f.targetAmount).toLocaleString()}</span>
+                      <span className="text-2xs text-surface-400">PHP {Number(fundraiser.raisedAmount).toLocaleString()}</span>
+                      <span className="text-2xs text-surface-400">PHP {Number(fundraiser.targetAmount).toLocaleString()}</span>
                     </div>
                   </div>
                 );
@@ -188,7 +302,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
     </section>
   );
 }

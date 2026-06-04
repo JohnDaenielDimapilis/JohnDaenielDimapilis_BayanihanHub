@@ -7,13 +7,17 @@ const statusConfig = {
   registered: { label: "Registered", class: "badge-success" },
   joined: { label: "Joined", class: "badge-success" },
   "open for registration": { label: "Open for Registration", class: "badge-success" },
+  finished: { label: "Finished", class: "badge-info" },
   completed: { label: "Completed", class: "badge-info" },
   recorded: { label: "Recorded", class: "badge-info" },
   closed: { label: "Closed", class: "badge-neutral" },
   full: { label: "Full", class: "badge-warning" },
+  available: { label: "Available", class: "badge-success" },
   waitlisted: { label: "Waitlisted", class: "badge-warning" },
   "pending review": { label: "Pending Review", class: "badge-warning" },
   pending: { label: "Pending", class: "badge-warning" },
+  submitted: { label: "Submitted", class: "badge-warning" },
+  "under review": { label: "Under Review", class: "badge-warning" },
   medium: { label: "Medium", class: "badge-warning" },
   rejected: { label: "Rejected", class: "badge-danger" },
   cancelled: { label: "Cancelled", class: "badge-danger" },
@@ -25,6 +29,8 @@ const statusConfig = {
   archived: { label: "Archived", class: "badge-neutral" },
   low: { label: "Low", class: "badge-neutral" },
   inactive: { label: "Inactive", class: "badge-neutral" },
+  disabled: { label: "Disabled", class: "badge-danger" },
+  "temporarily banned": { label: "Temporarily Banned", class: "badge-danger" },
 };
 
 export default function StatusBadge({ value }) {

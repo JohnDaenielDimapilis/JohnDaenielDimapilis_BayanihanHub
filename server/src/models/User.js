@@ -8,6 +8,14 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 8, select: false },
     role: { type: String, enum: ["Admin", "Staff", "User"], default: "User" },
     isActive: { type: Boolean, default: true },
+    accountStatus: {
+      type: String,
+      enum: ["Active", "Temporarily Banned", "Disabled"],
+      default: "Active"
+    },
+    banUntil: { type: Date },
+    banReason: { type: String, trim: true },
+    bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     phone: { type: String, trim: true },
     address: { type: String, trim: true },
     privacyConsentAt: { type: Date },

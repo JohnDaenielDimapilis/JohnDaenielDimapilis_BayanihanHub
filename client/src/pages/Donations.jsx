@@ -16,6 +16,7 @@ export default function Donations() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [filters, setFilters] = useState({ startDate: "", endDate: "", status: "all", fundraiser: "all", donor: "", type: "all" });
   const [form, setForm] = useState({
     fundraiser: "",
     amount: "",
@@ -93,6 +94,21 @@ export default function Donations() {
   const verifiedDonations = donations.filter((d) => d.donationStatus === "Verified");
   const pendingDonations = donations.filter((d) => ["Pending", "Submitted", "Under Review"].includes(d.donationStatus));
   const totalAmount = verifiedDonations.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
+  const filteredDonations = donations.filter((donation) => {
+    const donationDate = new Date(donation.donationDate || donation.createdAt);
+    if (filters.startDate && donationDate < new Date(filters.startDate)) return false;
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      if (donationDate > end) return false;
+    }
+    if (filters.status !== "all" && donation.donationStatus !== filters.status) return false;
+    if (filters.fundraiser !== "all" && (donation.fundraiserId?._id || donation.fundraiserId) !== filters.fundraiser) return false;
+    if (filters.type !== "all" && donation.donationType !== filters.type) return false;
+    if (filters.donor && !String(donation.donorAnonymous ? "Anonymous Donor" : donation.donor?.name || "").toLowerCase().includes(filters.donor.toLowerCase())) return false;
+    return true;
+  });
 
   const columns = [
     {
@@ -212,8 +228,38 @@ export default function Donations() {
         </div>
       </div>
 
+      <div className="card-padded grid grid-cols-1 md:grid-cols-6 gap-3">
+        <FormField label="Start Date">
+          <input type="date" className="input h-10" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
+        </FormField>
+        <FormField label="End Date">
+          <input type="date" className="input h-10" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
+        </FormField>
+        <FormField label="Status">
+          <select className="input h-10" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+            <option value="all">All statuses</option>
+            {["Pending", "Submitted", "Under Review", "Verified", "Rejected", "Refunded", "Cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Fundraiser">
+          <select className="input h-10" value={filters.fundraiser} onChange={(e) => setFilters({ ...filters, fundraiser: e.target.value })}>
+            <option value="all">All fundraisers</option>
+            {fundraisers.map((fundraiser) => <option key={fundraiser._id} value={fundraiser._id}>{fundraiser.title}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Type">
+          <select className="input h-10" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}>
+            <option value="all">All types</option>
+            {["Cash", "Bank Transfer", "In-kind", "Other"].map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Donor">
+          <input className="input h-10" placeholder="Donor name" value={filters.donor} onChange={(e) => setFilters({ ...filters, donor: e.target.value })} />
+        </FormField>
+      </div>
+
       <DataTable
-        data={donations}
+        data={filteredDonations}
         columns={columns}
         loading={loading}
         searchPlaceholder="Search donations..."

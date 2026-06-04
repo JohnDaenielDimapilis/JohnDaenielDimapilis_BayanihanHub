@@ -6,6 +6,66 @@ import Fundraiser from "../models/Fundraiser.js";
 import Participant from "../models/Participant.js";
 import User from "../models/User.js";
 
+function dateFilterFromQuery(query, field = "createdAt") {
+  const filter = {};
+  const now = new Date();
+  let start;
+  let end;
+
+  if (query.startDate) start = new Date(query.startDate);
+  if (query.endDate) {
+    end = new Date(query.endDate);
+    end.setHours(23, 59, 59, 999);
+  }
+  if (!start && query.day) {
+    start = new Date(query.day);
+    end = new Date(query.day);
+    end.setHours(23, 59, 59, 999);
+  }
+  if (!start && query.week) {
+    start = new Date(query.week);
+    const day = start.getDay();
+    start.setDate(start.getDate() - day);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+  }
+  if (!start && query.month) {
+    const [year, month] = String(query.month).split("-").map(Number);
+    if (year && month) {
+      start = new Date(year, month - 1, 1);
+      end = new Date(year, month, 0, 23, 59, 59, 999);
+    }
+  }
+  if (!start && query.year) {
+    start = new Date(Number(query.year), 0, 1);
+    end = new Date(Number(query.year), 11, 31, 23, 59, 59, 999);
+  }
+  if (!start && query.period === "today") {
+    start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+  }
+
+  if (start || end) {
+    filter[field] = {};
+    if (start && !Number.isNaN(start.getTime())) filter[field].$gte = start;
+    if (end && !Number.isNaN(end.getTime())) filter[field].$lte = end;
+  }
+
+  return filter;
+}
+
+function creatorFilter(req) {
+  return req.user.role === "Staff" ? { createdBy: req.user._id } : {};
+}
+
+function textMatch(value) {
+  return value ? new RegExp(String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
+}
+
 function countByStatus(records, status) {
   return records.filter((record) => record.status === status).length;
 }
@@ -35,8 +95,8 @@ function toAmountRows(groups) {
 }
 
 function buildQualityMetrics({ participants, donations, feedbackCount, beneficiariesServed }) {
-  const present = participants.filter((item) => item.attendanceStatus === "Present" || item.attendanceStatus === "Verified").length;
-  const absent = participants.filter((item) => item.attendanceStatus === "Absent" || item.attendanceStatus === "No-show").length;
+  const present = participants.filter((item) => item.attendanceStatus === "Present").length;
+  const absent = participants.filter((item) => item.attendanceStatus === "Absent").length;
   const verifiedDonations = donations.filter((item) => item.donationStatus === "Verified");
   const pendingDonations = donations.filter((item) => ["Pending", "Submitted", "Under Review"].includes(item.donationStatus));
 
@@ -102,7 +162,7 @@ export async function getReports(req, res) {
         pendingEvents: countByStatus(events, "Pending Review"),
         approvedEvents: countByStatus(events, "Approved"),
         rejectedEvents: countByStatus(events, "Rejected"),
-        completedEvents: countByStatus(events, "Completed"),
+        finishedEvents: countByStatus(events, "Finished"),
         cancelledEvents: countByStatus(events, "Cancelled"),
         totalParticipants: participants.length,
         totalFundraisers: fundraisers.length,
@@ -157,7 +217,7 @@ export async function getReports(req, res) {
       pendingEvents: countByStatus(staffEvents, "Pending Review"),
       approvedEvents: countByStatus(staffEvents, "Approved"),
       rejectedEvents: countByStatus(staffEvents, "Rejected"),
-      completedEvents: countByStatus(staffEvents, "Completed"),
+      finishedEvents: countByStatus(staffEvents, "Finished"),
       cancelledEvents: countByStatus(staffEvents, "Cancelled"),
       totalParticipants: participants.length,
       totalFundraisers: staffFundraisers.length,
@@ -182,5 +242,130 @@ export async function getReports(req, res) {
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to generate reports.", error: error.message });
+  }
+}
+
+export async function getEventReport(req, res) {
+  try {
+    const filter = { ...creatorFilter(req), ...dateFilterFromQuery(req.query, "date") };
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.creator && req.user.role === "Admin") filter.createdBy = req.query.creator;
+    if (req.query.search) filter.title = textMatch(req.query.search);
+    const records = await Event.find(filter).populate("createdBy", "name email role").sort({ date: -1 });
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load event report.", error: error.message });
+  }
+}
+
+export async function getParticipantReport(req, res) {
+  try {
+    const eventFilter = creatorFilter(req);
+    if (req.query.creator && req.user.role === "Admin") eventFilter.createdBy = req.query.creator;
+    if (req.query.eventName) eventFilter.title = textMatch(req.query.eventName);
+    const eventIds = Object.keys(eventFilter).length
+      ? (await Event.find(eventFilter).select("_id")).map((event) => event._id)
+      : null;
+
+    const filter = { ...dateFilterFromQuery(req.query, "joinedAt") };
+    if (eventIds) filter.eventId = { $in: eventIds };
+    if (req.query.attendanceStatus) filter.attendanceStatus = req.query.attendanceStatus;
+    if (req.query.participationStatus) filter.participationStatus = req.query.participationStatus;
+
+    const records = await Participant.find(filter)
+      .populate("userId", "name email role")
+      .populate("eventId", "title date location status createdBy")
+      .sort({ joinedAt: -1 });
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load participant report.", error: error.message });
+  }
+}
+
+export async function getDonationReport(req, res) {
+  try {
+    const fundraiserFilter = creatorFilter(req);
+    if (req.query.creator && req.user.role === "Admin") fundraiserFilter.createdBy = req.query.creator;
+    if (req.query.fundraiserName) fundraiserFilter.title = textMatch(req.query.fundraiserName);
+    const fundraiserIds = Object.keys(fundraiserFilter).length
+      ? (await Fundraiser.find(fundraiserFilter).select("_id")).map((fundraiser) => fundraiser._id)
+      : null;
+
+    const filter = { ...dateFilterFromQuery(req.query, "donationDate") };
+    if (fundraiserIds) filter.fundraiserId = { $in: fundraiserIds };
+    if (req.query.status) filter.donationStatus = req.query.status;
+
+    let records = await Donation.find(filter)
+      .populate("donor", "name email role")
+      .populate("fundraiserId", "title purpose status createdBy")
+      .sort({ donationDate: -1 });
+    if (req.query.donorName) {
+      const search = String(req.query.donorName).toLowerCase();
+      records = records.filter((donation) => donation.donor?.name?.toLowerCase().includes(search));
+    }
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load donation report.", error: error.message });
+  }
+}
+
+export async function getFundraiserReport(req, res) {
+  try {
+    const filter = { ...creatorFilter(req), ...dateFilterFromQuery(req.query, "createdAt") };
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.creator && req.user.role === "Admin") filter.createdBy = req.query.creator;
+    if (req.query.search) filter.title = textMatch(req.query.search);
+    if (req.query.minTarget || req.query.maxTarget) {
+      filter.targetAmount = {};
+      if (req.query.minTarget) filter.targetAmount.$gte = Number(req.query.minTarget);
+      if (req.query.maxTarget) filter.targetAmount.$lte = Number(req.query.maxTarget);
+    }
+    const records = await Fundraiser.find(filter).populate("createdBy", "name email role").sort({ createdAt: -1 });
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load fundraiser report.", error: error.message });
+  }
+}
+
+export async function getFeedbackReport(req, res) {
+  try {
+    const eventFilter = creatorFilter(req);
+    if (req.query.creator && req.user.role === "Admin") eventFilter.createdBy = req.query.creator;
+    if (req.query.eventName) eventFilter.title = textMatch(req.query.eventName);
+    const eventIds = Object.keys(eventFilter).length
+      ? (await Event.find(eventFilter).select("_id")).map((event) => event._id)
+      : null;
+
+    const filter = { ...dateFilterFromQuery(req.query, "createdAt") };
+    if (eventIds) filter.eventId = { $in: eventIds };
+    if (req.query.rating) filter.rating = Number(req.query.rating);
+    const records = await Feedback.find(filter)
+      .populate("userId", "name email role")
+      .populate({
+        path: "eventId",
+        select: "title date status createdBy",
+        populate: { path: "createdBy", select: "name email role" }
+      })
+      .sort({ createdAt: -1 });
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load feedback report.", error: error.message });
+  }
+}
+
+export async function exportReport(req, res) {
+  try {
+    const type = req.query.type || "events";
+    const response = {
+      events: getEventReport,
+      participants: getParticipantReport,
+      donations: getDonationReport,
+      fundraisers: getFundraiserReport,
+      feedback: getFeedbackReport
+    }[type];
+    if (!response) return res.status(400).json({ message: "Unknown report type." });
+    return response(req, res);
+  } catch (error) {
+    res.status(500).json({ message: "Report export failed.", error: error.message });
   }
 }

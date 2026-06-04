@@ -1,9 +1,9 @@
-import { MessageSquare, Plus, Star } from "lucide-react";
+import { Plus, Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, participantsApi } from "../api/client.js";
-import Modal from "../components/ui/Modal.jsx";
-import FormField from "../components/ui/FormField.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
+import FormField from "../components/ui/FormField.jsx";
+import Modal from "../components/ui/Modal.jsx";
 import { SkeletonCard } from "../components/ui/Skeleton.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -43,6 +43,7 @@ export default function Feedback() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ event: "", rating: 5, comment: "", suggestions: "" });
+  const [filters, setFilters] = useState({ event: "all", creator: "", rating: "all", period: "all" });
 
   async function load() {
     try {
@@ -50,8 +51,11 @@ export default function Feedback() {
       setEvents(eventData);
       if (user.role === "User") setRegistrations(await participantsApi.getMy());
       if (user.role !== "User") setFeedback(await api("/feedback"));
-    } catch { toast.error("Failed to load feedback data"); }
-    finally { setLoading(false); }
+    } catch {
+      toast.error("Failed to load feedback data");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -73,27 +77,49 @@ export default function Feedback() {
       setForm({ event: "", rating: 5, comment: "", suggestions: "" });
       setModalOpen(false);
       load();
-    } catch (err) { toast.error(err.message); }
-    finally { setSubmitting(false); }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const avgRating = feedback.length
-    ? (feedback.reduce((sum, f) => sum + (f.rating || 0), 0) / feedback.length).toFixed(1)
-    : "—";
+  const filteredFeedback = feedback.filter((item) => {
+    if (filters.event !== "all" && (item.eventId?._id || item.eventId) !== filters.event) return false;
+    if (filters.creator && !String(item.eventId?.createdBy?.name || "").toLowerCase().includes(filters.creator.toLowerCase())) return false;
+    if (filters.rating !== "all" && Number(item.rating) !== Number(filters.rating)) return false;
+    if (filters.period !== "all") {
+      const created = new Date(item.createdAt);
+      const now = new Date();
+      if (filters.period === "day" && created.toDateString() !== now.toDateString()) return false;
+      if (filters.period === "month" && (created.getFullYear() !== now.getFullYear() || created.getMonth() !== now.getMonth())) return false;
+      if (filters.period === "year" && created.getFullYear() !== now.getFullYear()) return false;
+    }
+    return true;
+  });
+
+  const avgRating = filteredFeedback.length
+    ? (filteredFeedback.reduce((sum, item) => sum + Number(item.rating || 0), 0) / filteredFeedback.length).toFixed(1)
+    : "-";
+
+  const allEventsForFilter = feedback
+    .map((item) => item.eventId)
+    .filter(Boolean)
+    .filter((event, index, list) => list.findIndex((item) => item._id === event._id) === index);
 
   const attendedEventIds = new Set(
     registrations
-      .filter((item) => ["Present", "Verified"].includes(item.attendanceStatus))
+      .filter((item) => item.attendanceStatus === "Present")
       .map((item) => item.eventId?._id || item.eventId)
   );
-  const feedbackEvents = events.filter((event) => event.status === "Completed" && attendedEventIds.has(event._id));
+  const feedbackEvents = events.filter((event) => event.status === "Finished" && attendedEventIds.has(event._id));
 
   return (
     <section className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div className="page-header mb-0">
-          <h1>Feedback</h1>
-          <p>{user.role === "User" ? "Share your event experience" : "Review community feedback"}</p>
+          <h1>Feedback Analytics</h1>
+          <p>{user.role === "User" ? "Share your event experience from History" : "Review community feedback with event, creator, rating, and date filters"}</p>
         </div>
         {user.role === "User" && (
           <button className="btn-primary" onClick={() => setModalOpen(true)}>
@@ -108,7 +134,7 @@ export default function Feedback() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="stat-card-component">
               <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Total Feedback</span>
-              <strong className="text-2xl font-bold text-surface-900">{feedback.length}</strong>
+              <strong className="text-2xl font-bold text-surface-900">{filteredFeedback.length}</strong>
             </div>
             <div className="stat-card-component">
               <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Average Rating</span>
@@ -120,15 +146,15 @@ export default function Feedback() {
             <div className="stat-card-component">
               <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Rating Distribution</span>
               <div className="flex gap-1 mt-1">
-                {[5, 4, 3, 2, 1].map((r) => {
-                  const count = feedback.filter((f) => f.rating === r).length;
-                  const pct = feedback.length ? (count / feedback.length) * 100 : 0;
+                {[5, 4, 3, 2, 1].map((rating) => {
+                  const count = filteredFeedback.filter((item) => item.rating === rating).length;
+                  const pct = filteredFeedback.length ? (count / filteredFeedback.length) * 100 : 0;
                   return (
-                    <div key={r} className="flex-1 flex flex-col items-center gap-1" title={`${r} stars: ${count}`}>
+                    <div key={rating} className="flex-1 flex flex-col items-center gap-1" title={`${rating} stars: ${count}`}>
                       <div className="w-full bg-surface-100 rounded-full h-8 flex items-end overflow-hidden">
                         <div className="w-full bg-accent-400 rounded-full transition-all duration-500" style={{ height: `${Math.max(4, pct)}%` }} />
                       </div>
-                      <span className="text-2xs text-surface-500">{r}</span>
+                      <span className="text-2xs text-surface-500">{rating}</span>
                     </div>
                   );
                 })}
@@ -136,15 +162,41 @@ export default function Feedback() {
             </div>
           </div>
 
+          <div className="card-padded grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <FormField label="Event">
+              <select className="input h-10" value={filters.event} onChange={(e) => setFilters({ ...filters, event: e.target.value })}>
+                <option value="all">All events</option>
+                {allEventsForFilter.map((event) => <option key={event._id} value={event._id}>{event.title}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Creator">
+              <input className="input h-10" placeholder="Creator name" value={filters.creator} onChange={(e) => setFilters({ ...filters, creator: e.target.value })} />
+            </FormField>
+            <FormField label="Rating">
+              <select className="input h-10" value={filters.rating} onChange={(e) => setFilters({ ...filters, rating: e.target.value })}>
+                <option value="all">All ratings</option>
+                {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} stars</option>)}
+              </select>
+            </FormField>
+            <FormField label="Date">
+              <select className="input h-10" value={filters.period} onChange={(e) => setFilters({ ...filters, period: e.target.value })}>
+                <option value="all">All time</option>
+                <option value="day">Today</option>
+                <option value="month">This month</option>
+                <option value="year">This year</option>
+              </select>
+            </FormField>
+          </div>
+
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
             </div>
-          ) : feedback.length === 0 ? (
+          ) : filteredFeedback.length === 0 ? (
             <EmptyState title="No feedback yet" description="Feedback will appear here when users submit reviews." />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {feedback.map((item) => (
+              {filteredFeedback.map((item) => (
                 <article key={item._id} className="card-padded flex flex-col gap-3 hover:shadow-soft transition-shadow">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -153,7 +205,7 @@ export default function Feedback() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-surface-900">{item.userId?.name || "Anonymous"}</p>
-                        <p className="text-xs text-surface-500">{item.eventId?.title || "Event"}</p>
+                        <p className="text-xs text-surface-500">{item.eventId?.title || "Event"} - {item.eventId?.createdBy?.name || "Creator"}</p>
                       </div>
                     </div>
                     <StarRating value={item.rating} readonly />
@@ -176,7 +228,7 @@ export default function Feedback() {
         <EmptyState
           icon="empty"
           title="Share your experience"
-          description="Your feedback helps us improve future events and programs."
+          description="Your feedback is now connected to your History page after a finished event with present attendance."
           action={<button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Give Feedback</button>}
         />
       )}
@@ -186,14 +238,14 @@ export default function Feedback() {
           <FormField label="Event" required>
             <select className="input" value={form.event} onChange={(e) => setForm({ ...form, event: e.target.value })} required>
               <option value="">Select an event</option>
-              {feedbackEvents.map((e) => <option key={e._id} value={e._id}>{e.title}</option>)}
+              {feedbackEvents.map((event) => <option key={event._id} value={event._id}>{event.title}</option>)}
             </select>
             {feedbackEvents.length === 0 && (
-              <p className="form-hint">Completed events appear here after your attendance is present or verified.</p>
+              <p className="form-hint">Finished events appear here after your attendance is marked present.</p>
             )}
           </FormField>
           <FormField label="Rating">
-            <StarRating value={form.rating} onChange={(r) => setForm({ ...form, rating: r })} />
+            <StarRating value={form.rating} onChange={(rating) => setForm({ ...form, rating })} />
           </FormField>
           <FormField label="Comment" required>
             <textarea className="input" placeholder="How was your experience?" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} required />

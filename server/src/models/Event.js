@@ -28,6 +28,11 @@ const eventSchema = new mongoose.Schema(
       default: "Allow Waitlist"
     },
     cancellationReason: { type: String, trim: true },
+    cancelledAt: { type: Date },
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    qrCodeToken: { type: String, trim: true },
+    qrGeneratedAt: { type: Date },
+    qrExpiresAt: { type: Date },
     completedAt: { type: Date },
     approvalCriteria: {
       goalAligned: { type: Boolean, default: false },

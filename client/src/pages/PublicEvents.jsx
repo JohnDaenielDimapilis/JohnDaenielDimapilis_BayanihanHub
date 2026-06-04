@@ -2,6 +2,7 @@ import { CalendarDays, LogIn, MapPin, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { eventsApi } from "../api/client.js";
+import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
 import StatusBadge from "../components/StatusBadge.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { SkeletonCard } from "../components/ui/Skeleton.jsx";
@@ -23,9 +24,7 @@ export default function PublicEvents() {
       <header className="bg-navy-900 text-white">
         <div className="max-w-6xl mx-auto px-4 py-5 flex items-center justify-between gap-4">
           <Link to="/public-events" className="flex items-center gap-3 no-underline text-white">
-            <div className="w-10 h-10 rounded-lg bg-accent-400 flex items-center justify-center text-navy-900 font-black text-sm">
-              BH
-            </div>
+            <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-10 h-10 rounded-lg bg-white" />
             <div>
               <p className="text-base font-bold leading-tight">BayanihanHub</p>
               <p className="text-xs text-surface-400">Community events</p>
@@ -90,7 +89,7 @@ export default function PublicEvents() {
                   </p>
                   <p className="inline-flex items-center gap-2">
                     <Users size={14} className="text-surface-400" />
-                    {event.participantLimit || 0} slots
+                    {event.capacityDisplay || `${event.joinedCount || 0}/${event.participantLimit || 0}`} slots
                   </p>
                 </div>
 

@@ -7,6 +7,7 @@ import {
   FileText,
   MapPin,
   Plus,
+  QrCode,
   Send,
   UserMinus,
   Users,
@@ -15,6 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { eventsApi, participantsApi } from "../api/client.js";
+import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
 import DataTable from "../components/DataTable.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import Modal from "../components/ui/Modal.jsx";
@@ -81,6 +83,11 @@ export default function Events() {
   const [submitting, setSubmitting] = useState(false);
   const [reportEvent, setReportEvent] = useState(null);
   const [reportForm, setReportForm] = useState(blankReport);
+  const [detailsEvent, setDetailsEvent] = useState(null);
+  const [dateFilter, setDateFilter] = useState({ type: "all", value: "" });
+  const [locationFilter, setLocationFilter] = useState("");
+  const [progressFilter, setProgressFilter] = useState("all");
+  const [qrPanel, setQrPanel] = useState(null);
 
   async function load() {
     try {
@@ -176,6 +183,12 @@ export default function Events() {
       if (action === "open") await eventsApi.openRegistration(event._id);
       if (action === "close") await eventsApi.closeRegistration(event._id);
       if (action === "archive") await eventsApi.archive(event._id);
+      if (action === "qr") {
+        const qr = event.qrCodeToken ? await eventsApi.getQr(event._id) : await eventsApi.generateQr(event._id);
+        setQrPanel({ event, qr });
+        toast.success(event.qrCodeToken ? "QR code loaded" : "QR code generated");
+        return;
+      }
       if (action === "cancel") {
         const cancellationReason = window.prompt("Reason for cancelling this event:");
         if (!cancellationReason) return;
@@ -224,7 +237,7 @@ export default function Events() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await eventsApi.complete(reportEvent._id, {
+      await eventsApi.finish(reportEvent._id, {
         postEventReport: {
           ...reportForm,
           attendanceCount: Number(reportForm.attendanceCount || 0),
@@ -256,13 +269,13 @@ export default function Events() {
       if (registration && ["Joined", "Waitlisted"].includes(registration.participationStatus)) {
         return (
           <>
-            {registration.participationStatus === "Joined" && ["Open for Registration", "Full", "Closed", "Completed"].includes(row.status) && (
+            {registration.participationStatus === "Joined" && ["Open for Registration", "Full", "Closed", "Finished"].includes(row.status) && (
               <button className="btn-primary btn-xs" onClick={() => checkIn(row)}>
                 <ClipboardCheck size={13} />
                 Check in
               </button>
             )}
-            {row.status === "Completed" && ["Present", "Verified"].includes(registration.attendanceStatus) && (
+            {row.status === "Finished" && registration.attendanceStatus === "Present" && (
               <button className="btn-outline btn-xs" onClick={() => navigate("/feedback")}>
                 <FileText size={13} />
                 Feedback
@@ -323,13 +336,19 @@ export default function Events() {
             <button className="btn-danger btn-xs" onClick={() => runAction("cancel", row)}>Cancel</button>
           </>
         )}
+        {["Open for Registration", "Full", "Closed", "Finished"].includes(row.status) && isManager && (
+          <button className="btn-outline btn-xs" onClick={() => runAction("qr", row)}>
+            <QrCode size={13} />
+            QR
+          </button>
+        )}
         {["Open for Registration", "Full", "Closed"].includes(row.status) && isManager && (
           <button className="btn-primary btn-xs" onClick={() => { setReportEvent(row); setReportForm(blankReport); }}>
             <FileText size={13} />
             Report
           </button>
         )}
-        {row.status === "Completed" && isManager && (
+        {row.status === "Finished" && isManager && (
           <button className="btn-outline btn-xs" onClick={() => runAction("archive", row)}>
             <Archive size={13} />
             Archive
@@ -337,6 +356,44 @@ export default function Events() {
         )}
       </>
     );
+  }
+
+  function matchesDateFilter(event) {
+    if (dateFilter.type === "all" || !dateFilter.value || !event.date) return true;
+    const eventDate = new Date(event.date);
+    const selected = dateFilter.type === "year" ? new Date(Number(dateFilter.value), 0, 1) : new Date(dateFilter.value);
+    if (Number.isNaN(eventDate.getTime()) || Number.isNaN(selected.getTime())) return true;
+    if (dateFilter.type === "day") return eventDate.toDateString() === selected.toDateString();
+    if (dateFilter.type === "month") return eventDate.getFullYear() === selected.getFullYear() && eventDate.getMonth() === selected.getMonth();
+    if (dateFilter.type === "year") return eventDate.getFullYear() === selected.getFullYear();
+    return true;
+  }
+
+  const userEvents = events.filter((event) => {
+    const locationMatch = !locationFilter.trim() || String(event.location || "").toLowerCase().includes(locationFilter.toLowerCase());
+    const progressMatch = progressFilter === "all" || Number(event.progressPercentage || 0) === Number(progressFilter);
+    return matchesDateFilter(event) && locationMatch && progressMatch;
+  });
+
+  function mainRegistrationButton(event) {
+    const registration = registrationByEvent[event._id];
+    if (registration && ["Joined", "Waitlisted"].includes(registration.participationStatus)) {
+      return (
+        <button className="btn-danger w-full justify-center" onClick={() => cancelRegistration(event)}>
+          Cancel Registration
+        </button>
+      );
+    }
+    if (event.status === "Open for Registration") {
+      return <button className="btn-primary w-full justify-center" onClick={() => join(event)}>Join Event</button>;
+    }
+    if (event.status === "Full") {
+      return <button className="btn-outline w-full justify-center" onClick={() => join(event)}>Join Waitlist</button>;
+    }
+    if (event.status === "Closed") return <button className="btn-outline w-full justify-center" disabled>Registration Closed</button>;
+    if (event.status === "Finished") return <button className="btn-primary w-full justify-center" onClick={() => setDetailsEvent(event)}>View History / Give Feedback</button>;
+    if (event.status === "Cancelled") return <button className="btn-danger w-full justify-center" disabled>Cancelled</button>;
+    return <button className="btn-outline w-full justify-center" disabled>Unavailable</button>;
   }
 
   const columns = [
@@ -435,7 +492,7 @@ export default function Events() {
       <div className="flex items-center justify-between gap-4">
         <div className="page-header mb-0">
           <h1>Events</h1>
-          <p>Manage event review, registration, attendance, completion, and archive status</p>
+          <p>Manage event review, registration, attendance, finish reports, and archive status</p>
         </div>
         {user.role !== "User" && (
           <button className="btn-primary" onClick={openCreate}>
@@ -445,15 +502,115 @@ export default function Events() {
         )}
       </div>
 
-      <DataTable
-        data={events}
-        columns={columns}
-        loading={loading}
-        searchPlaceholder="Search events..."
-        emptyTitle="No events yet"
-        emptyDescription="Create a draft event or open an approved event for registration."
-        exportFilename="events"
-      />
+      {user.role === "User" ? (
+        <>
+          <div className="card-padded grid grid-cols-1 md:grid-cols-4 gap-3">
+            <FormField label="Date Filter">
+              <div className="flex gap-2">
+                <select className="input h-10" value={dateFilter.type} onChange={(e) => setDateFilter({ ...dateFilter, type: e.target.value })}>
+                  <option value="all">All</option>
+                  <option value="day">Day</option>
+                  <option value="month">Month</option>
+                  <option value="year">Year</option>
+                </select>
+                {dateFilter.type !== "all" && (
+                  <input
+                    type={dateFilter.type === "year" ? "number" : dateFilter.type}
+                    className="input h-10"
+                    value={dateFilter.value}
+                    min={dateFilter.type === "year" ? "2020" : undefined}
+                    onChange={(e) => setDateFilter({ ...dateFilter, value: e.target.value })}
+                  />
+                )}
+              </div>
+            </FormField>
+            <FormField label="Location">
+              <input className="input h-10" placeholder="Search location..." value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} />
+            </FormField>
+            <FormField label="Progress">
+              <select className="input h-10" value={progressFilter} onChange={(e) => setProgressFilter(e.target.value)}>
+                <option value="all">All progress</option>
+                <option value="55">55% Open</option>
+                <option value="65">65% Full</option>
+                <option value="75">75% Closed</option>
+                <option value="90">90% Finished</option>
+                <option value="0">0% Cancelled</option>
+              </select>
+            </FormField>
+            <div className="flex items-end">
+              <button className="btn-outline w-full" onClick={() => { setDateFilter({ type: "all", value: "" }); setLocationFilter(""); setProgressFilter("all"); }}>
+                Reset Filters
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="card-padded text-sm text-surface-500">Loading events...</div>
+          ) : userEvents.length === 0 ? (
+            <div className="card-padded text-sm text-surface-500">No events match your filters.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {userEvents.map((event) => {
+                const registration = registrationByEvent[event._id];
+                return (
+                  <article key={event._id} className="card-padded flex flex-col gap-4">
+                    <div className="flex items-start gap-3">
+                      <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-12 h-12 rounded-lg shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h2 className="text-base font-semibold text-surface-900 truncate">{event.title || "Untitled event"}</h2>
+                          <span className="badge badge-info">{event.progressPercentage || 0}%</span>
+                        </div>
+                        <p className="text-xs text-surface-500">{event.eventType || "Community event"}</p>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-surface-600 line-clamp-3">{event.description || "No description yet."}</p>
+
+                    <div className="grid grid-cols-2 gap-3 text-sm text-surface-600">
+                      <div>
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Date</p>
+                        <p>{event.date ? new Date(event.date).toLocaleDateString() : "TBA"}</p>
+                      </div>
+                      <div>
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Time</p>
+                        <p>{event.time || "TBA"}</p>
+                      </div>
+                      <div>
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Location</p>
+                        <p>{event.location || "TBA"}</p>
+                      </div>
+                      <div>
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Capacity</p>
+                        <p>{event.capacityDisplay || `${event.joinedCount || 0}/${event.participantLimit || 0}`}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <StatusBadge value={registration?.participationStatus || (event.status === "Open for Registration" ? "Available" : event.status)} />
+                      <button className="btn-ghost btn-sm" onClick={() => setDetailsEvent(event)}>View Details</button>
+                    </div>
+
+                    <div className="mt-auto">
+                      {mainRegistrationButton(event)}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        <DataTable
+          data={events}
+          columns={columns}
+          loading={loading}
+          searchPlaceholder="Search events..."
+          emptyTitle="No events yet"
+          emptyDescription="Create a draft event or open an approved event for registration."
+          exportFilename="events"
+        />
+      )}
 
       <Modal
         open={modalOpen}
@@ -546,7 +703,7 @@ export default function Events() {
             <FormField label="Attendance Count" required>
               <input type="number" min="0" className="input" value={reportForm.attendanceCount} onChange={(e) => setReportForm({ ...reportForm, attendanceCount: e.target.value })} required />
             </FormField>
-            <FormField label="No-show Count">
+            <FormField label="Absent Count">
               <input type="number" min="0" className="input" value={reportForm.noShowCount} onChange={(e) => setReportForm({ ...reportForm, noShowCount: e.target.value })} />
             </FormField>
             <FormField label="Beneficiaries Served" required>
@@ -569,6 +726,114 @@ export default function Events() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!detailsEvent}
+        onClose={() => setDetailsEvent(null)}
+        title={detailsEvent?.title || "Event Details"}
+        description={detailsEvent ? `${detailsEvent.eventType || "Community event"} · ${detailsEvent.location || "Location TBA"}` : ""}
+      >
+        {detailsEvent && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
+              <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-12 h-12 rounded-lg shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <StatusBadge value={detailsEvent.status} />
+                  <span className="badge badge-info">{detailsEvent.progressPercentage || 0}% progress</span>
+                </div>
+                <p className="text-sm text-surface-600">
+                  Created by {detailsEvent.createdBy?.name || "BayanihanHub staff"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Date and Time</p>
+                <p className="font-medium text-surface-800">
+                  {detailsEvent.date ? new Date(detailsEvent.date).toLocaleDateString() : "TBA"} {detailsEvent.time || ""}
+                </p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Capacity</p>
+                <p className="font-medium text-surface-800">{detailsEvent.capacityDisplay || `${detailsEvent.joinedCount || 0}/${detailsEvent.participantLimit || 0}`}</p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Registration</p>
+                <p className="font-medium text-surface-800">
+                  {registrationByEvent[detailsEvent._id]?.participationStatus || (detailsEvent.status === "Open for Registration" ? "Available" : detailsEvent.status)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Attendance</p>
+                <p className="font-medium text-surface-800">{registrationByEvent[detailsEvent._id]?.attendanceStatus || "Not joined"}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Description</p>
+                <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.description || "No description provided."}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Objectives</p>
+                <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.objectives || "No objectives provided."}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Target Beneficiaries</p>
+                  <p className="text-sm text-surface-700">{detailsEvent.targetBeneficiaries || "Not specified"}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Required Resources</p>
+                  <p className="text-sm text-surface-700">{detailsEvent.requiredResources || "Not specified"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              {mainRegistrationButton(detailsEvent)}
+              <button className="btn-outline justify-center" onClick={() => navigate("/history")}>Open History</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!qrPanel}
+        onClose={() => setQrPanel(null)}
+        title="Event Attendance QR"
+        description={qrPanel?.event ? `Display this code for "${qrPanel.event.title}".` : ""}
+      >
+        {qrPanel && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-4 text-center">
+              <QrCode size={80} className="mx-auto text-surface-700" />
+              <p className="mt-3 text-xs font-semibold text-surface-500 uppercase">QR Payload</p>
+              <code className="mt-1 block break-all rounded bg-white px-3 py-2 text-sm text-surface-700 border border-surface-200">
+                {qrPanel.qr.qrData}
+              </code>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Generated</p>
+                <p className="font-medium text-surface-800">{qrPanel.qr.qrGeneratedAt ? new Date(qrPanel.qr.qrGeneratedAt).toLocaleString() : "Just now"}</p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Expires</p>
+                <p className="font-medium text-surface-800">{qrPanel.qr.qrExpiresAt ? new Date(qrPanel.qr.qrExpiresAt).toLocaleString() : "Not set"}</p>
+              </div>
+            </div>
+            <button
+              className="btn-primary w-full justify-center"
+              onClick={() => navigator.clipboard?.writeText(qrPanel.qr.qrData).then(() => toast.success("QR payload copied"))}
+            >
+              Copy QR Payload
+            </button>
+          </div>
+        )}
       </Modal>
     </section>
   );

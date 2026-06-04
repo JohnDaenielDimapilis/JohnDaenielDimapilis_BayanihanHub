@@ -184,6 +184,26 @@ export async function getMyParticipants(req, res) {
   }
 }
 
+export async function getEventParticipants(req, res) {
+  try {
+    const event = await Event.findById(req.params.eventId);
+    if (!event) return res.status(404).json({ message: "Event not found." });
+    if (!canManageParticipant(req, event)) {
+      return res.status(403).json({ message: "Staff can only view participants of their own events." });
+    }
+
+    const participants = await Participant.find({ eventId: event._id })
+      .populate("userId", "name email role")
+      .populate("eventId", "title date location status createdBy participantLimit qrGeneratedAt qrExpiresAt")
+      .populate("verifiedBy", "name email role")
+      .sort({ joinedAt: -1 });
+
+    res.status(200).json(participants);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch event participants.", error: error.message });
+  }
+}
+
 export async function updateParticipantStatus(req, res) {
   try {
     const { attendanceStatus, participationStatus, attendanceRemarks } = req.body;
@@ -197,7 +217,11 @@ export async function updateParticipantStatus(req, res) {
       return res.status(403).json({ message: "Staff can only update participants of their own events." });
     }
 
-    if (attendanceStatus) participant.attendanceStatus = attendanceStatus;
+    if (attendanceStatus) {
+      participant.attendanceStatus = attendanceStatus;
+      participant.checkInMethod = "Manual";
+      if (attendanceStatus === "Present" && !participant.checkedInAt) participant.checkedInAt = new Date();
+    }
     if (participationStatus) participant.participationStatus = participationStatus;
     if (attendanceRemarks !== undefined) participant.attendanceRemarks = attendanceRemarks;
 
@@ -307,8 +331,8 @@ export async function checkInEvent(req, res) {
       return res.status(404).json({ message: "Joined registration not found." });
     }
 
-    if (!["Open for Registration", "Full", "Closed", "Completed"].includes(participant.eventId.status)) {
-      return res.status(400).json({ message: "Check-in is available only for active, closed, or completed events." });
+    if (!["Open for Registration", "Full", "Closed", "Finished"].includes(participant.eventId.status)) {
+      return res.status(400).json({ message: "Check-in is available only for active, closed, or finished events." });
     }
 
     participant.attendanceStatus = "Present";
@@ -356,9 +380,10 @@ export async function verifyAttendance(req, res) {
       return res.status(403).json({ message: "Staff can only verify participants of their own events." });
     }
 
-    participant.attendanceStatus = "Verified";
+    participant.attendanceStatus = "Present";
     participant.verifiedBy = req.user._id;
     participant.attendanceRemarks = req.body.attendanceRemarks || participant.attendanceRemarks;
+    participant.checkInMethod = "Manual";
     if (!participant.checkedInAt) participant.checkedInAt = new Date();
     await participant.save();
 

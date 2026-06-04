@@ -2,12 +2,14 @@ import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Accounts from "./pages/Accounts.jsx";
+import ApprovalRequests from "./pages/ApprovalRequests.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Donations from "./pages/Donations.jsx";
 import Events from "./pages/Events.jsx";
 import Feedback from "./pages/Feedback.jsx";
 import Fundraisers from "./pages/Fundraisers.jsx";
 import FundraiserDetail from "./pages/FundraiserDetail.jsx";
+import History from "./pages/History.jsx";
 import MyDonations from "./pages/MyDonations.jsx";
 import Login from "./pages/Login.jsx";
 import Logs from "./pages/Logs.jsx";
@@ -16,7 +18,6 @@ import Profile from "./pages/Profile.jsx";
 import PublicEvents from "./pages/PublicEvents.jsx";
 import Register from "./pages/Register.jsx";
 import Reports from "./pages/Reports.jsx";
-import Security from "./pages/Security.jsx";
 
 export default function App() {
   return (
@@ -34,17 +35,18 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="accounts" element={<ProtectedRoute roles={["Admin"]}><Accounts /></ProtectedRoute>} />
+        <Route path="approval-requests" element={<ProtectedRoute roles={["Admin", "Staff"]}><ApprovalRequests /></ProtectedRoute>} />
         <Route path="events" element={<Events />} />
+        <Route path="history" element={<History />} />
         <Route path="fundraisers" element={<Fundraisers />} />
         <Route path="fundraisers/:id" element={<FundraiserDetail />} />
         <Route path="donations" element={<Donations />} />
         <Route path="my-donations" element={<MyDonations />} />
         <Route path="participants" element={<ProtectedRoute roles={["Admin", "Staff"]}><Participants /></ProtectedRoute>} />
-        <Route path="feedback" element={<Feedback />} />
+        <Route path="feedback" element={<ProtectedRoute roles={["Admin", "Staff"]}><Feedback /></ProtectedRoute>} />
         <Route path="profile" element={<Profile />} />
         <Route path="reports" element={<ProtectedRoute roles={["Admin", "Staff"]}><Reports /></ProtectedRoute>} />
         <Route path="logs" element={<ProtectedRoute roles={["Admin"]}><Logs /></ProtectedRoute>} />
-        <Route path="security" element={<ProtectedRoute roles={["Admin"]}><Security /></ProtectedRoute>} />
       </Route>
     </Routes>
   );

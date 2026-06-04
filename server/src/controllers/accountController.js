@@ -14,7 +14,9 @@ function isStrongPassword(password) {
 
 export async function listAccounts(req, res, next) {
   try {
-    const users = await User.find({}).select("-password").sort({ createdAt: -1 });
+    const filter = {};
+    if (["User", "Staff", "Admin"].includes(req.query.role)) filter.role = req.query.role;
+    const users = await User.find(filter).select("-password").populate("bannedBy", "name email role").sort({ createdAt: -1 });
     res.json(users);
   } catch (error) {
     next(error);
@@ -43,7 +45,7 @@ export async function updateAccount(req, res, next) {
       return next(new Error("Account not found."));
     }
 
-    const allowed = ["name", "email", "role", "phone", "address", "isActive"];
+    const allowed = ["name", "email", "role", "phone", "address", "isActive", "accountStatus"];
     allowed.forEach((field) => {
       if (req.body[field] !== undefined) user[field] = req.body[field];
     });
@@ -67,6 +69,92 @@ export async function deleteAccount(req, res, next) {
 
     await logActivity(req, { action: "Deleted user account", module: "Account Management", affectedRecord: user._id });
     res.json({ message: "Account deleted." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetAccountPassword(req, res, next) {
+  try {
+    const { password } = req.body;
+    if (!isStrongPassword(password)) {
+      res.status(400);
+      return next(new Error("New password must be at least 8 characters and include uppercase, lowercase, and a number."));
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      res.status(404);
+      return next(new Error("Account not found."));
+    }
+
+    user.password = password;
+    await user.save();
+    await logActivity(req, { action: "Reset account password", module: "Accounts", affectedRecord: user._id, remarks: `Reset password for ${user.email}` });
+    res.json({ message: "Password reset successfully." });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function banAccount(req, res, next) {
+  try {
+    const { amount = 7, unit = "days", banReason = "Administrative temporary ban" } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      res.status(404);
+      return next(new Error("Account not found."));
+    }
+
+    const numericAmount = Math.max(1, Number(amount || 1));
+    const banUntil = new Date();
+    if (unit === "months") banUntil.setMonth(banUntil.getMonth() + numericAmount);
+    else if (unit === "years") banUntil.setFullYear(banUntil.getFullYear() + numericAmount);
+    else banUntil.setDate(banUntil.getDate() + numericAmount);
+
+    user.accountStatus = "Temporarily Banned";
+    user.isActive = false;
+    user.banUntil = banUntil;
+    user.banReason = banReason;
+    user.bannedBy = req.user._id;
+    await user.save();
+
+    await logActivity(req, {
+      action: "Temporarily Banned Account",
+      module: "Accounts",
+      affectedRecord: user._id,
+      remarks: `Banned ${user.email} until ${banUntil.toLocaleDateString()}`
+    });
+
+    res.json({ message: "Account temporarily banned.", user: { id: user._id, accountStatus: user.accountStatus, banUntil: user.banUntil } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function unbanAccount(req, res, next) {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      res.status(404);
+      return next(new Error("Account not found."));
+    }
+
+    user.accountStatus = "Active";
+    user.isActive = true;
+    user.banUntil = undefined;
+    user.banReason = undefined;
+    user.bannedBy = undefined;
+    await user.save();
+
+    await logActivity(req, {
+      action: "Unbanned Account",
+      module: "Accounts",
+      affectedRecord: user._id,
+      remarks: `Restored ${user.email}`
+    });
+
+    res.json({ message: "Account unbanned.", user: { id: user._id, accountStatus: user.accountStatus } });
   } catch (error) {
     next(error);
   }

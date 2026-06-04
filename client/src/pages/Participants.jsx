@@ -1,4 +1,4 @@
-import { CheckCircle, Download, ShieldCheck, UserX, Users } from "lucide-react";
+import { CheckCircle, Download, QrCode, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, getToken, participantsApi } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
@@ -22,18 +22,8 @@ export default function Participants() {
 
   async function doAttendance(id, attendanceStatus) {
     try {
-      await api(`/participants/${id}/status`, { method: "PATCH", body: JSON.stringify({ attendanceStatus }) });
+      await participantsApi.manualAttendance(id, { attendanceStatus, attendanceRemarks: `Marked ${attendanceStatus} manually.` });
       toast.success(`Marked as ${attendanceStatus.toLowerCase()}`);
-      load();
-    } catch (err) { toast.error(err.message); }
-  }
-
-  async function verify(id) {
-    const attendanceRemarks = window.prompt("Attendance remarks:", "Verified on site");
-    if (attendanceRemarks === null) return;
-    try {
-      await participantsApi.verifyAttendance(id, { attendanceRemarks });
-      toast.success("Attendance verified");
       load();
     } catch (err) { toast.error(err.message); }
   }
@@ -59,8 +49,8 @@ export default function Participants() {
   }
 
   const presentCount = participants.filter((p) => p.attendanceStatus === "Present").length;
-  const absentCount = participants.filter((p) => ["Absent", "No-show"].includes(p.attendanceStatus)).length;
-  const verifiedCount = participants.filter((p) => p.attendanceStatus === "Verified").length;
+  const absentCount = participants.filter((p) => p.attendanceStatus === "Absent").length;
+  const pendingCount = participants.filter((p) => p.attendanceStatus === "Pending").length;
 
   const columns = [
     {
@@ -130,16 +120,6 @@ export default function Participants() {
             <UserX size={13} />
             Absent
           </button>
-          <button
-            className="btn-outline btn-xs"
-            onClick={() => setConfirm({ id: row._id, status: "No-show", name: row.userId?.name })}
-          >
-            No-show
-          </button>
-          <button className="btn-primary btn-xs" onClick={() => verify(row._id)}>
-            <ShieldCheck size={13} />
-            Verify
-          </button>
           {row.eventId?._id && (
             <button className="btn-outline btn-xs" onClick={() => exportEvent(row.eventId._id, row.eventId?.title)}>
               <Download size={13} />
@@ -174,17 +154,17 @@ export default function Participants() {
           </div>
         </div>
         <div className="stat-card-component">
-          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Absent / No-show</span>
+          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Absent</span>
           <div className="flex items-center gap-2">
             <UserX size={18} className="text-danger-500" />
             <strong className="text-2xl font-bold text-danger-600">{absentCount}</strong>
           </div>
         </div>
         <div className="stat-card-component">
-          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Verified</span>
+          <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Pending</span>
           <div className="flex items-center gap-2">
-            <ShieldCheck size={18} className="text-success-500" />
-            <strong className="text-2xl font-bold text-success-600">{verifiedCount}</strong>
+            <QrCode size={18} className="text-warning-500" />
+            <strong className="text-2xl font-bold text-warning-600">{pendingCount}</strong>
           </div>
         </div>
       </div>

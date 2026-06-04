@@ -15,7 +15,7 @@ export async function createFeedback(req, res) {
       userId: req.user._id,
       eventId,
       participationStatus: { $ne: "Cancelled" },
-      attendanceStatus: { $in: ["Present", "Verified"] }
+      attendanceStatus: "Present"
     });
 
     if (!participant) {
@@ -23,8 +23,8 @@ export async function createFeedback(req, res) {
     }
 
     const event = await Event.findById(eventId).select("createdBy status");
-    if (!event || event.status !== "Completed") {
-      return res.status(403).json({ message: "Feedback can be submitted only after the event is completed." });
+    if (!event || event.status !== "Finished") {
+      return res.status(403).json({ message: "Feedback can be submitted only after the event is finished." });
     }
 
     const existingFeedback = await Feedback.findOne({
@@ -73,11 +73,27 @@ export async function getFeedback(req, res) {
 
     const feedback = await Feedback.find(filter)
       .populate("userId", "name email role")
-      .populate("eventId", "title date location createdBy")
+      .populate({
+        path: "eventId",
+        select: "title date location status createdBy",
+        populate: { path: "createdBy", select: "name email role" }
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json(feedback);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch feedback.", error: error.message });
+  }
+}
+
+export async function getMyFeedback(req, res) {
+  try {
+    const feedback = await Feedback.find({ userId: req.user._id })
+      .populate("eventId", "title date location status")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(feedback);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch your feedback.", error: error.message });
   }
 }

@@ -22,7 +22,7 @@ JWT_EXPIRES_IN=7d
 CLIENT_URL=http://localhost:5173
 ```
 
-3. Seed demo accounts (optional):
+3. Seed demo accounts (optional for a real MongoDB database):
 
 ```bash
 npm run seed --prefix server
@@ -32,6 +32,8 @@ This creates three test users:
 - **Admin:** admin@bayanihanhub.test / Password123
 - **Staff:** staff@bayanihanhub.test / Password123
 - **User:** user@bayanihanhub.test / Password123
+
+When `MONGO_URI` is missing or local MongoDB is unavailable, the app starts an in-memory MongoDB server and automatically seeds dummy accounts plus event, registration, QR attendance, fundraiser, donation, feedback, notification, and log records. See `DUMMY_DATA_NOTES.md`.
 
 4. Start the app:
 
@@ -45,7 +47,7 @@ Frontend runs on http://localhost:5173, backend on http://localhost:5000.
 
 There are three roles:
 
-- **Admin** -- full access. Approves events/fundraisers, manages user accounts, views logs and security info.
+- **Admin** -- full access. Approves events/fundraisers/donations, manages user accounts, views reports and logs.
 - **Staff** -- creates events and fundraisers (which need Admin approval before they go live). Can view reports and participant lists.
 - **User** -- joins events, donates to fundraisers, leaves feedback, earns achievement badges.
 
@@ -78,16 +80,16 @@ All endpoints are under `/api`. Auth uses Bearer tokens (JWT).
 | Area | Endpoints |
 |------|-----------|
 | Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` |
-| Events | CRUD + `PATCH /:id/approve`, `PATCH /:id/reject` |
+| Events | CRUD + approve/reject, registration, cancel, finish, QR generate/scan, history |
 | Fundraisers | CRUD + approve/reject |
 | Donations | `GET /donations`, `POST /donations` |
-| Participants | `POST /participants/events/:id/join`, `PATCH /:id/status` |
+| Participants | join/cancel/check-in, manual Present/Absent, event participant export |
 | Feedback | `GET /feedback`, `POST /feedback` |
 | Achievements | `GET /achievements`, `PATCH /:id/recalculate` |
-| Reports | `GET /reports` |
+| Reports | summary + events, participants, donations, fundraisers, feedback tabs |
 | Logs | `GET /logs` (Admin only) |
-| Security | `GET /security`, `GET /security/logs` (Admin only) |
-| Accounts | CRUD (Admin only) |
+| Approval Requests | Events, fundraisers, and donations pending Admin action |
+| Accounts | CRUD, edit, reset password, temporary ban, unban, disable (Admin only) |
 | Dashboard | `GET /dashboard` |
 
 ## Troubleshooting

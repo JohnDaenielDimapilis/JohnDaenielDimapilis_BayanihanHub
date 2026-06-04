@@ -1,4 +1,5 @@
 import Notification from "../models/Notification.js";
+import Participant from "../models/Participant.js";
 
 export async function createNotification({ userId, title, message, type = "System", relatedRecordId }) {
   if (!userId) return null;
@@ -11,8 +12,40 @@ export async function createNotifications(items = []) {
   return Notification.insertMany(validItems, { ordered: false });
 }
 
+async function createEventRemindersForUser(userId) {
+  const registrations = await Participant.find({ userId, participationStatus: "Joined" }).populate("eventId");
+  const now = new Date();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+
+  for (const registration of registrations) {
+    const event = registration.eventId;
+    if (!event || event.status === "Cancelled") continue;
+    const eventDay = new Date(event.date);
+    eventDay.setHours(0, 0, 0, 0);
+    const daysUntil = Math.ceil((eventDay - today) / 86400000);
+    if (daysUntil < 0 || daysUntil > 3) continue;
+
+    const title = daysUntil === 0 ? "Event is today" : `Event reminder: ${daysUntil} day${daysUntil === 1 ? "" : "s"} left`;
+    const existing = await Notification.findOne({ userId, title, relatedRecordId: event._id });
+    if (existing) continue;
+
+    const timing = daysUntil === 0 ? "today" : daysUntil === 1 ? "tomorrow" : `in ${daysUntil} days`;
+    await createNotification({
+      userId,
+      title,
+      message: `Reminder: "${event.title || "Your event"}" will happen ${timing}. Date: ${new Date(event.date).toLocaleDateString()}. Location: ${event.location || "TBA"}.`,
+      type: "Event",
+      relatedRecordId: event._id
+    });
+  }
+}
+
 export async function getNotifications(req, res) {
   try {
+    if (req.user.role === "User") {
+      await createEventRemindersForUser(req.user._id);
+    }
     const notifications = await Notification.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
       .limit(30);

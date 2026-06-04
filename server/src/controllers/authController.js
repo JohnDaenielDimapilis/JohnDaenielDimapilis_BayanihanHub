@@ -31,6 +31,18 @@ function recordFailedLogin(email) {
   return { count, lockedUntil };
 }
 
+async function normalizeAccountStatus(user) {
+  if (user.accountStatus === "Temporarily Banned" && user.banUntil && new Date(user.banUntil) <= new Date()) {
+    user.accountStatus = "Active";
+    user.banUntil = undefined;
+    user.banReason = undefined;
+    user.bannedBy = undefined;
+    user.isActive = true;
+    await user.save();
+  }
+  return user;
+}
+
 function generateToken(userId, role) {
   return jwt.sign(
     { id: userId, role },
@@ -130,7 +142,9 @@ export async function login(req, res) {
       });
     }
 
-    if (user.isActive === false) {
+    await normalizeAccountStatus(user);
+
+    if (user.isActive === false || user.accountStatus === "Disabled" || user.accountStatus === "Temporarily Banned") {
       await createLog({
         userId: user._id,
         role: user.role,
@@ -141,10 +155,16 @@ export async function login(req, res) {
           email: user.email,
           ipAddress: req.ip,
           userAgent: req.get("user-agent"),
-          reason: "Account is inactive."
+          reason: user.accountStatus === "Temporarily Banned"
+            ? `Account is temporarily banned until ${new Date(user.banUntil).toLocaleString()}.`
+            : "Account is inactive."
         }
       });
-      return res.status(403).json({ message: "This account is inactive. Please contact an administrator." });
+      return res.status(403).json({
+        message: user.accountStatus === "Temporarily Banned"
+          ? `This account is temporarily banned until ${new Date(user.banUntil).toLocaleString()}.`
+          : "This account is inactive. Please contact an administrator."
+      });
     }
 
     await createLog({
@@ -191,7 +211,9 @@ export async function googleDemoLogin(req, res) {
       });
     }
 
-    if (user.isActive === false) {
+    await normalizeAccountStatus(user);
+
+    if (user.isActive === false || user.accountStatus === "Disabled" || user.accountStatus === "Temporarily Banned") {
       return res.status(403).json({ message: "This account is inactive. Please contact an administrator." });
     }
 

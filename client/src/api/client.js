@@ -33,6 +33,8 @@ export const authApi = {
 export const eventsApi = {
   getAll: () => api("/events"),
   getPublic: () => api("/events/public"),
+  getUserVisible: () => api("/events/user-visible"),
+  getHistory: () => api("/events/history"),
   getById: (id) => api(`/events/${id}`),
   create: (payload) => api("/events", { method: "POST", body: JSON.stringify(payload) }),
   update: (id, payload) => api(`/events/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
@@ -45,7 +47,11 @@ export const eventsApi = {
   closeRegistration: (id) => api(`/events/${id}/close-registration`, { method: "PATCH" }),
   cancel: (id, payload) => api(`/events/${id}/cancel`, { method: "PATCH", body: JSON.stringify(payload) }),
   complete: (id, payload) => api(`/events/${id}/complete`, { method: "PATCH", body: JSON.stringify(payload) }),
-  archive: (id) => api(`/events/${id}/archive`, { method: "PATCH" })
+  finish: (id, payload) => api(`/events/${id}/finish`, { method: "PATCH", body: JSON.stringify(payload) }),
+  archive: (id) => api(`/events/${id}/archive`, { method: "PATCH" }),
+  generateQr: (id) => api(`/events/${id}/generate-qr`, { method: "POST" }),
+  getQr: (id) => api(`/events/${id}/qr`),
+  scanQr: (id, payload) => api(`/events/${id}/scan-qr`, { method: "POST", body: JSON.stringify(payload) })
 };
 
 // Fundraisers endpoints
@@ -75,7 +81,10 @@ export const participantsApi = {
   join: (eventId) => api(`/participants/events/${eventId}/join`, { method: "POST" }),
   cancel: (eventId, payload) => api(`/participants/events/${eventId}/cancel`, { method: "PATCH", body: JSON.stringify(payload) }),
   checkIn: (eventId, payload = {}) => api(`/participants/events/${eventId}/check-in`, { method: "POST", body: JSON.stringify(payload) }),
+  scanQr: (eventId, payload) => api(`/participants/events/${eventId}/scan-qr`, { method: "POST", body: JSON.stringify(payload) }),
+  getByEvent: (eventId) => api(`/participants/events/${eventId}`),
   updateStatus: (id, payload) => api(`/participants/${id}/status`, { method: "PATCH", body: JSON.stringify(payload) }),
+  manualAttendance: (id, payload) => api(`/participants/${id}/manual-attendance`, { method: "PATCH", body: JSON.stringify(payload) }),
   verifyAttendance: (id, payload = {}) => api(`/participants/${id}/verify-attendance`, { method: "PATCH", body: JSON.stringify(payload) }),
   exportUrl: (eventId) => `${API_URL}/participants/events/${eventId}/export`
 };
@@ -83,6 +92,7 @@ export const participantsApi = {
 // Feedback endpoints
 export const feedbackApi = {
   getAll: () => api("/feedback"),
+  getMy: () => api("/feedback/my"),
   create: (payload) => api("/feedback", { method: "POST", body: JSON.stringify(payload) })
 };
 
@@ -94,7 +104,9 @@ export const achievementsApi = {
 
 // Reports endpoints
 export const reportsApi = {
-  getAll: () => api("/reports")
+  getAll: () => api("/reports"),
+  getTab: (type, query = "") => api(`/reports/${type}${query ? `?${query}` : ""}`),
+  export: (query = "") => api(`/reports/export${query ? `?${query}` : ""}`)
 };
 
 // Logs endpoints
@@ -104,21 +116,19 @@ export const logsApi = {
 
 // Accounts endpoints
 export const accountsApi = {
-  getAll: () => api("/accounts"),
+  getAll: (role) => api(`/accounts${role && role !== "all" ? `?role=${role}` : ""}`),
   create: (payload) => api("/accounts", { method: "POST", body: JSON.stringify(payload) }),
   update: (id, payload) => api(`/accounts/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  patch: (id, payload) => api(`/accounts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   delete: (id) => api(`/accounts/${id}`, { method: "DELETE" }),
+  resetPassword: (id, payload) => api(`/accounts/${id}/password`, { method: "PATCH", body: JSON.stringify(payload) }),
+  ban: (id, payload) => api(`/accounts/${id}/ban`, { method: "PATCH", body: JSON.stringify(payload) }),
+  unban: (id) => api(`/accounts/${id}/unban`, { method: "PATCH" }),
   me: () => api("/accounts/me"),
   updateMe: (payload) => api("/accounts/me", { method: "PUT", body: JSON.stringify(payload) }),
   changePassword: (payload) => api("/accounts/me/password", { method: "PATCH", body: JSON.stringify(payload) }),
   exportMe: () => api("/accounts/me/export"),
   deactivateMe: () => api("/accounts/me", { method: "DELETE" })
-};
-
-// Security endpoints
-export const securityApi = {
-  getSummary: () => api("/security"),
-  getLogs: () => api("/security/logs")
 };
 
 // Dashboard endpoints

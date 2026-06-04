@@ -5,7 +5,7 @@ export const EVENT_PROGRESS = {
   "Open for Registration": 55,
   Full: 65,
   Closed: 75,
-  Completed: 90,
+  Finished: 90,
   Archived: 100,
   Rejected: 0,
   Cancelled: 0
@@ -17,7 +17,7 @@ export const USER_VISIBLE_EVENT_STATUSES = [
   "Open for Registration",
   "Full",
   "Closed",
-  "Completed",
+  "Finished",
   "Cancelled"
 ];
 

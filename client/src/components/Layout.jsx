@@ -1,11 +1,12 @@
 import {
   Bell, CalendarDays, ChartNoAxesCombined, ChevronLeft, ClipboardList,
-  Gift, HandCoins, LayoutDashboard, LogOut, Menu, MessageSquare, Search,
-  ShieldCheck, UserCog, Users, X
+  Gift, HandCoins, History, Inbox, LayoutDashboard, LogOut, Menu, MessageSquare, Search,
+  UserCog, Users, X
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { notificationsApi } from "../api/client.js";
+import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
 import { useAuth } from "../context/AuthContext.jsx";
 import Avatar from "./ui/Avatar.jsx";
 import CommandPalette from "./CommandPalette.jsx";
@@ -21,20 +22,22 @@ const navSections = [
     label: "Management",
     links: [
       { to: "/events", label: "Events", icon: CalendarDays },
-      { to: "/fundraisers", label: "Fundraisers", icon: Gift },
+      { to: "/history", label: "History", icon: History },
       { to: "/donations", label: "Donations", icon: HandCoins, roles: ["Admin", "Staff"] },
-      { to: "/my-donations", label: "My Donations", icon: HandCoins, roles: ["User"] },
+      { to: "/my-donations", label: "Donations", icon: HandCoins, roles: ["User"] },
+      { to: "/fundraisers", label: "Fundraisers", icon: Gift, roles: ["Admin", "Staff", "User"] },
       { to: "/participants", label: "Participants", icon: Users, roles: ["Admin", "Staff"] },
-      { to: "/feedback", label: "Feedback", icon: MessageSquare },
+      { to: "/feedback", label: "Feedback Analytics", icon: MessageSquare, roles: ["Admin", "Staff"] },
     ],
   },
   {
     label: "Administration",
     links: [
       { to: "/accounts", label: "Accounts", icon: UserCog, roles: ["Admin"] },
+      { to: "/approval-requests", label: "Approval Requests", icon: Inbox, roles: ["Admin", "Staff"] },
       { to: "/reports", label: "Reports", icon: ChartNoAxesCombined, roles: ["Admin", "Staff"] },
       { to: "/logs", label: "Activity Logs", icon: ClipboardList, roles: ["Admin"] },
-      { to: "/security", label: "Security", icon: ShieldCheck, roles: ["Admin"] },
+      { to: "/profile", label: "Profile", icon: UserCog },
     ],
   },
 ];
@@ -42,16 +45,17 @@ const navSections = [
 const pageTitles = {
   "/": "Dashboard",
   "/events": "Events",
+  "/history": "History",
   "/fundraisers": "Fundraisers",
   "/donations": "Donations",
   "/my-donations": "My Donations",
   "/participants": "Participants",
   "/feedback": "Feedback",
+  "/approval-requests": "Approval Requests",
   "/profile": "Profile",
   "/accounts": "Accounts",
   "/reports": "Reports",
   "/logs": "Activity Logs",
-  "/security": "Security",
 };
 
 export default function Layout() {
@@ -98,9 +102,7 @@ export default function Layout() {
         `}
       >
         <div className={`flex items-center gap-3 px-5 h-16 border-b border-white/[0.08] shrink-0 ${collapsed ? "lg:justify-center lg:px-0" : ""}`}>
-          <div className="w-9 h-9 rounded-lg bg-accent-400 flex items-center justify-center text-navy-900 font-black text-sm shrink-0">
-            BH
-          </div>
+          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-9 h-9 rounded-lg shrink-0" />
           <div className={`overflow-hidden transition-all ${collapsed ? "lg:w-0 lg:opacity-0" : "w-auto opacity-100"}`}>
             <h1 className="text-white font-bold text-base leading-tight whitespace-nowrap">BayanihanHub</h1>
             <p className="text-surface-400 text-2xs leading-tight whitespace-nowrap">Foundation Management</p>
