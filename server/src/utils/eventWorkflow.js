@@ -14,6 +14,7 @@ export const EVENT_PROGRESS = {
 export const EVENT_STATUSES = Object.keys(EVENT_PROGRESS);
 
 export const USER_VISIBLE_EVENT_STATUSES = [
+  "Approved",
   "Open for Registration",
   "Full",
   "Closed",

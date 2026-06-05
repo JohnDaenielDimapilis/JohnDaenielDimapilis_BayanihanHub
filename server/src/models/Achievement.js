@@ -6,8 +6,12 @@ const achievementSchema = new mongoose.Schema(
     points: { type: Number, default: 0 },
     badges: [{ type: String, trim: true }],
     totalEventsJoined: { type: Number, default: 0 },
+    totalCompletedAttendedEvents: { type: Number, default: 0 },
     totalDonations: { type: Number, default: 0 },
-    totalFeedbackSubmitted: { type: Number, default: 0 }
+    totalDonationAmount: { type: Number, default: 0 },
+    totalFeedbackSubmitted: { type: Number, default: 0 },
+    donationBadge: { type: String, trim: true },
+    eventBadge: { type: String, trim: true }
   },
   { timestamps: true }
 );

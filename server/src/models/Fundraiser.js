@@ -29,7 +29,7 @@ const fundraiserSchema = new mongoose.Schema(
     progressUpdates: [fundraiserProgressSchema],
     status: {
       type: String,
-      enum: ["Pending", "Approved", "Closed", "Archived", "Rejected"],
+      enum: ["Pending", "Needs Revision", "Approved", "Closed", "Archived", "Rejected"],
       default: "Pending"
     },
     utilizationReport: { type: String, trim: true },
@@ -49,6 +49,9 @@ const fundraiserSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     approvedAt: { type: Date },
+    revisionRequestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    revisionRequestedAt: { type: Date },
+    revisionRemarks: { type: String, trim: true },
     rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     rejectedAt: { type: Date },
     rejectionReason: { type: String, trim: true }

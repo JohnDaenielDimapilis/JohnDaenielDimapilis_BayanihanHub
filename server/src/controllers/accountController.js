@@ -12,10 +12,17 @@ function isStrongPassword(password) {
     /\d/.test(password);
 }
 
+function canStaffManageAccount(req, user) {
+  return req.user.role !== "Staff" || user.role === "User";
+}
+
 export async function listAccounts(req, res, next) {
   try {
-    const filter = {};
-    if (["User", "Staff", "Admin"].includes(req.query.role)) filter.role = req.query.role;
+    const filter = req.user.role === "Staff" ? { role: "User" } : {};
+    if (["User", "Staff", "Admin"].includes(req.query.role)) {
+      if (req.user.role === "Staff" && req.query.role !== "User") return res.json([]);
+      filter.role = req.query.role;
+    }
     const users = await User.find(filter).select("-password").populate("bannedBy", "name email role").sort({ createdAt: -1 });
     res.json(users);
   } catch (error) {
@@ -45,12 +52,19 @@ export async function updateAccount(req, res, next) {
       return next(new Error("Account not found."));
     }
 
-    const allowed = ["name", "email", "role", "phone", "address", "isActive", "accountStatus"];
+    if (!canStaffManageAccount(req, user)) {
+      res.status(403);
+      return next(new Error("Staff can only manage regular user accounts."));
+    }
+
+    const allowed = req.user.role === "Staff"
+      ? ["name", "email", "phone", "address"]
+      : ["name", "email", "role", "phone", "address", "isActive", "accountStatus"];
     allowed.forEach((field) => {
       if (req.body[field] !== undefined) user[field] = req.body[field];
     });
 
-    if (req.body.password) user.password = req.body.password;
+    if (req.user.role === "Admin" && req.body.password) user.password = req.body.password;
     await user.save();
     await logActivity(req, { action: "Updated user account", module: "Account Management", affectedRecord: user._id });
     res.json({ id: user._id, name: user.name, email: user.email, role: user.role, isActive: user.isActive });
@@ -106,6 +120,11 @@ export async function banAccount(req, res, next) {
       return next(new Error("Account not found."));
     }
 
+    if (!canStaffManageAccount(req, user)) {
+      res.status(403);
+      return next(new Error("Staff can only temporarily restrict regular user accounts."));
+    }
+
     const numericAmount = Math.max(1, Number(amount || 1));
     const banUntil = new Date();
     if (unit === "months") banUntil.setMonth(banUntil.getMonth() + numericAmount);
@@ -138,6 +157,11 @@ export async function unbanAccount(req, res, next) {
     if (!user) {
       res.status(404);
       return next(new Error("Account not found."));
+    }
+
+    if (!canStaffManageAccount(req, user)) {
+      res.status(403);
+      return next(new Error("Staff can only restore regular user accounts."));
     }
 
     user.accountStatus = "Active";

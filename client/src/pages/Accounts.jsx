@@ -6,11 +6,13 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import FormField from "../components/ui/FormField.jsx";
 import Modal from "../components/ui/Modal.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 
 const blankCreate = { name: "", email: "", password: "", role: "User" };
 const blankEdit = { name: "", email: "", role: "User", accountStatus: "Active" };
 
 export default function Accounts() {
+  const { user } = useAuth();
   const toast = useToast();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,10 +70,10 @@ export default function Accounts() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await accountsApi.patch(editAccount._id, {
-        ...editForm,
-        isActive: editForm.accountStatus === "Active"
-      });
+      const payload = user.role === "Admin"
+        ? { ...editForm, isActive: editForm.accountStatus === "Active" }
+        : { name: editForm.name, email: editForm.email };
+      await accountsApi.patch(editAccount._id, payload);
       toast.success("Account updated");
       setEditAccount(null);
       load();
@@ -123,6 +125,8 @@ export default function Accounts() {
   }
 
   const roleColors = { Admin: "badge-danger", Staff: "badge-info", User: "badge-neutral" };
+  const isAdmin = user.role === "Admin";
+  const canOperateOn = (account) => isAdmin || account.role === "User";
   const activeCount = accounts.filter((account) => (account.accountStatus || "Active") === "Active" && account.isActive !== false).length;
   const bannedCount = accounts.filter((account) => account.accountStatus === "Temporarily Banned").length;
   const disabledCount = accounts.filter((account) => account.accountStatus === "Disabled" || account.isActive === false).length - bannedCount;
@@ -165,16 +169,18 @@ export default function Accounts() {
       key: "actions",
       header: "",
       sortable: false,
-      render: (row) => (
+      render: (row) => canOperateOn(row) ? (
         <div className="flex flex-wrap justify-end gap-2 min-w-[300px]">
           <button className="btn-outline btn-xs" onClick={() => openEdit(row)}>
             <Edit3 size={13} />
             Edit
           </button>
-          <button className="btn-outline btn-xs" onClick={() => setResetAccount(row)}>
-            <KeyRound size={13} />
-            Reset
-          </button>
+          {isAdmin && (
+            <button className="btn-outline btn-xs" onClick={() => setResetAccount(row)}>
+              <KeyRound size={13} />
+              Reset
+            </button>
+          )}
           {row.accountStatus === "Temporarily Banned" ? (
             <button className="btn-primary btn-xs" onClick={() => unban(row)}>
               <RotateCcw size={13} />
@@ -187,7 +193,7 @@ export default function Accounts() {
             </button>
           )}
         </div>
-      ),
+      ) : <span className="text-xs text-surface-400">Protected account</span>,
     },
   ];
 
@@ -201,10 +207,12 @@ export default function Accounts() {
           </div>
           <p>Manage roles, profile details, password resets, temporary bans, unbans, and disabled accounts</p>
         </div>
-        <button className="btn-primary" onClick={() => setModalOpen(true)}>
-          <Plus size={16} />
-          Add Account
-        </button>
+        {isAdmin && (
+          <button className="btn-primary" onClick={() => setModalOpen(true)}>
+            <Plus size={16} />
+            Add Account
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -236,10 +244,10 @@ export default function Accounts() {
         exportFilename="accounts"
         actions={(
           <select className="input h-9 w-auto text-sm" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-            <option value="all">All roles</option>
+            <option value="all">{isAdmin ? "All roles" : "Users"}</option>
             <option value="User">Users</option>
-            <option value="Staff">Staff</option>
-            <option value="Admin">Admins</option>
+            {isAdmin && <option value="Staff">Staff</option>}
+            {isAdmin && <option value="Admin">Admins</option>}
           </select>
         )}
       />
@@ -277,21 +285,23 @@ export default function Accounts() {
           <FormField label="Email Address" required>
             <input type="email" className="input" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
           </FormField>
-          <div className="form-grid">
-            <FormField label="Role" required>
-              <select className="input" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
-                <option value="User">User</option>
-                <option value="Staff">Staff</option>
-                <option value="Admin">Admin</option>
-              </select>
-            </FormField>
-            <FormField label="Account Status" required>
-              <select className="input" value={editForm.accountStatus} onChange={(e) => setEditForm({ ...editForm, accountStatus: e.target.value })}>
-                <option value="Active">Active</option>
-                <option value="Disabled">Disabled</option>
-              </select>
-            </FormField>
-          </div>
+          {isAdmin && (
+            <div className="form-grid">
+              <FormField label="Role" required>
+                <select className="input" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
+                  <option value="User">User</option>
+                  <option value="Staff">Staff</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </FormField>
+              <FormField label="Account Status" required>
+                <select className="input" value={editForm.accountStatus} onChange={(e) => setEditForm({ ...editForm, accountStatus: e.target.value })}>
+                  <option value="Active">Active</option>
+                  <option value="Disabled">Disabled</option>
+                </select>
+              </FormField>
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="btn-outline" onClick={() => setEditAccount(null)}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Save Changes"}</button>

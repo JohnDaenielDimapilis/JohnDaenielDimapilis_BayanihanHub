@@ -13,7 +13,8 @@ const tabs = [
   { id: "participants", label: "Participants" },
   { id: "donations", label: "Donations" },
   { id: "fundraisers", label: "Fundraisers" },
-  { id: "feedback", label: "Feedback" }
+  { id: "feedback", label: "Feedback" },
+  { id: "users", label: "Users" }
 ];
 
 function text(value) {
@@ -70,7 +71,7 @@ export default function Reports() {
   const [records, setRecords] = useState([]);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingRecords, setLoadingRecords] = useState(true);
-  const [filters, setFilters] = useState({ startDate: "", endDate: "", status: "", search: "", rating: "" });
+  const [filters, setFilters] = useState({ startDate: "", endDate: "", status: "", creator: "", search: "", role: "" });
 
   useEffect(() => {
     reportsApi.getAll()
@@ -88,12 +89,13 @@ export default function Reports() {
       else if (activeTab === "feedback") params.set("rating", filters.status);
       else params.set("status", filters.status);
     }
+    if (filters.creator && activeTab !== "users") params.set("creator", filters.creator);
+    if (filters.role && activeTab === "users") params.set("role", filters.role);
     if (filters.search) {
       if (activeTab === "participants" || activeTab === "feedback") params.set("eventName", filters.search);
       else if (activeTab === "donations") params.set("donorName", filters.search);
       else params.set("search", filters.search);
     }
-    if (activeTab === "feedback" && filters.rating) params.set("rating", filters.rating);
     return params.toString();
   }, [activeTab, filters]);
 
@@ -147,6 +149,14 @@ export default function Reports() {
       { key: "rating", header: "Rating", accessor: "rating", render: (row) => `${row.rating}/5` },
       { key: "comment", header: "Comment", accessor: "comment" },
       { key: "date", header: "Date", accessor: "createdAt", render: (row) => dateText(row.createdAt) },
+    ],
+    users: [
+      { key: "name", header: "Name", accessor: "name" },
+      { key: "email", header: "Email", accessor: "email" },
+      { key: "role", header: "Role", accessor: "role" },
+      { key: "status", header: "Status", accessor: (row) => row.accountStatus || (row.isActive === false ? "Disabled" : "Active"), render: (row) => <StatusBadge value={row.accountStatus || (row.isActive === false ? "Disabled" : "Active")} /> },
+      { key: "phone", header: "Phone", accessor: "phone" },
+      { key: "createdAt", header: "Created", accessor: "createdAt", render: (row) => dateText(row.createdAt) },
     ]
   };
 
@@ -188,15 +198,16 @@ export default function Reports() {
     events: ["Draft", "Pending Review", "Approved", "Open for Registration", "Full", "Closed", "Finished", "Cancelled", "Rejected", "Archived"],
     participants: ["Pending", "Present", "Absent"],
     donations: ["Pending", "Submitted", "Under Review", "Verified", "Rejected", "Refunded", "Cancelled"],
-    fundraisers: ["Pending", "Approved", "Closed", "Archived", "Rejected"],
-    feedback: ["5", "4", "3", "2", "1"]
+    fundraisers: ["Pending", "Needs Revision", "Approved", "Closed", "Archived", "Rejected"],
+    feedback: ["5", "4", "3", "2", "1"],
+    users: ["Active", "Temporarily Banned", "Disabled"]
   }[activeTab];
 
   return (
     <section className="space-y-6 animate-fade-in">
       <div className="page-header">
         <h1>Reports</h1>
-        <p>Filtered analytics and exports for events, participants, donations, fundraisers, and feedback</p>
+        <p>Filtered analytics and exports for events, participants, donations, fundraisers, feedback, and users</p>
       </div>
 
       {loadingSummary ? <SkeletonStats count={4} /> : (
@@ -215,7 +226,7 @@ export default function Reports() {
             className={`btn-sm ${activeTab === tab.id ? "btn-primary" : "btn-outline"}`}
             onClick={() => {
               setActiveTab(tab.id);
-              setFilters({ startDate: "", endDate: "", status: "", search: "", rating: "" });
+              setFilters({ startDate: "", endDate: "", status: "", creator: "", search: "", role: "" });
             }}
           >
             {tab.label}
@@ -223,7 +234,7 @@ export default function Reports() {
         ))}
       </div>
 
-      <div className="card-padded grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div className="card-padded grid grid-cols-1 md:grid-cols-6 gap-3">
         <FormField label="Start Date">
           <input type="date" className="input h-10" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
         </FormField>
@@ -236,11 +247,25 @@ export default function Reports() {
             {statusOptions.map((option) => <option key={option} value={option}>{activeTab === "feedback" ? `${option} stars` : option}</option>)}
           </select>
         </FormField>
-        <FormField label={activeTab === "donations" ? "Donor" : activeTab === "fundraisers" ? "Fundraiser" : "Search"}>
+        {activeTab === "users" ? (
+          <FormField label="Role">
+            <select className="input h-10" value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value })}>
+              <option value="">All roles</option>
+              <option value="User">Users</option>
+              <option value="Staff">Staff</option>
+              <option value="Admin">Admins</option>
+            </select>
+          </FormField>
+        ) : (
+          <FormField label="Creator">
+            <input className="input h-10" placeholder="Creator name, email, or ID" value={filters.creator} onChange={(e) => setFilters({ ...filters, creator: e.target.value })} />
+          </FormField>
+        )}
+        <FormField label={activeTab === "donations" ? "Donor" : activeTab === "fundraisers" ? "Fundraiser" : activeTab === "users" ? "Name or Email" : "Search"}>
           <input className="input h-10" placeholder="Filter text" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
         </FormField>
         <div className="flex items-end">
-          <button className="btn-outline w-full" onClick={() => setFilters({ startDate: "", endDate: "", status: "", search: "", rating: "" })}>Reset</button>
+          <button className="btn-outline w-full" onClick={() => setFilters({ startDate: "", endDate: "", status: "", creator: "", search: "", role: "" })}>Reset</button>
         </div>
       </div>
 

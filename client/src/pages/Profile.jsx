@@ -136,7 +136,9 @@ export default function Profile() {
               ))}
             </div>
             <p className="text-sm text-surface-500">
-              {achievement?.points ? `${achievement.points} points earned from events, donations, and feedback.` : "Join events and support fundraisers to unlock badges."}
+              {achievement?.badges?.length
+                ? `PHP ${Number(achievement.totalDonationAmount || 0).toLocaleString()} donated and ${achievement.totalEventsJoined || 0} events joined.`
+                : "Join events and support fundraisers to unlock badges."}
             </p>
           </div>
         </div>

@@ -229,11 +229,13 @@ export default function Dashboard() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-surface-900">Achievement Badge</h3>
-                <p className="text-xs text-surface-500">{achievement?.points || 0} points</p>
+                <p className="text-xs text-surface-500">
+                  PHP {Number(achievement?.totalDonationAmount || 0).toLocaleString()} donated - {achievement?.totalEventsJoined || 0} events joined
+                </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(achievement?.badges?.length ? achievement.badges : ["Start by joining an event"]).map((badge) => (
+              {(achievement?.badges?.length ? achievement.badges : ["Start by joining an event or donating"]).map((badge) => (
                 <span key={badge} className="badge badge-info">{badge}</span>
               ))}
             </div>

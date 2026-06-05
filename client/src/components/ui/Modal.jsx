@@ -15,12 +15,12 @@ export default function Modal({ open, onClose, title, description, children, siz
 
   if (!open) return null;
 
-  const widths = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
+  const widths = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl", "2xl": "max-w-[900px]" };
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className={`modal-panel ${widths[size]}`} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100 shrink-0">
           <div>
             <h3 id="modal-title" className="text-lg font-semibold text-surface-900">{title}</h3>
             {description && <p className="text-sm text-surface-500 mt-0.5">{description}</p>}
@@ -29,7 +29,7 @@ export default function Modal({ open, onClose, title, description, children, siz
             <X size={16} />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-6 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

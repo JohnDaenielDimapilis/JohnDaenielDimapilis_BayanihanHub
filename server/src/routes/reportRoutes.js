@@ -6,7 +6,8 @@ import {
   getFeedbackReport,
   getFundraiserReport,
   getParticipantReport,
-  getReports
+  getReports,
+  getUserReport
 } from "../controllers/reportController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 
@@ -19,6 +20,7 @@ router.get("/participants", authorize("Admin", "Staff"), getParticipantReport);
 router.get("/donations", authorize("Admin", "Staff"), getDonationReport);
 router.get("/fundraisers", authorize("Admin", "Staff"), getFundraiserReport);
 router.get("/feedback", authorize("Admin", "Staff"), getFeedbackReport);
+router.get("/users", authorize("Admin", "Staff"), getUserReport);
 router.get("/export", authorize("Admin", "Staff"), exportReport);
 
 export default router;

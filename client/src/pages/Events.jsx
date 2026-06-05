@@ -108,6 +108,34 @@ function ProgressCell({ value = 0 }) {
   );
 }
 
+function FormSection({ title, description, children }) {
+  return (
+    <section className="rounded-lg border border-surface-200 bg-white p-4 space-y-4">
+      <div>
+        <h4 className="text-sm font-semibold text-surface-900">{title}</h4>
+        {description && <p className="text-xs text-surface-500 mt-0.5">{description}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ImageUrlField({ label, value, onChange }) {
+  return (
+    <FormField label={label} hint="Paste a public image URL for preview and event documentation.">
+      <input className="input h-10" placeholder="https://..." value={value} onChange={onChange} />
+      {value?.trim() && (
+        <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 overflow-hidden">
+          <img src={value} alt={`${label} preview`} className="h-28 w-full object-cover" />
+          <div className="px-3 py-2 text-xs text-surface-500 flex items-center gap-1">
+            <ImageIcon size={12} /> Preview
+          </div>
+        </div>
+      )}
+    </FormField>
+  );
+}
+
 export default function Events() {
   const { user } = useAuth();
   const toast = useToast();
@@ -338,6 +366,10 @@ export default function Events() {
     return user.role === "Admin" || ownerId === user.id;
   }
 
+  function canReview(row) {
+    return user.role === "Admin" || row.createdBy?.role === "User";
+  }
+
   function renderActions(row) {
     const registration = registrationByEvent[row._id];
     const isManager = user.role !== "User" && canManage(row);
@@ -387,7 +419,7 @@ export default function Events() {
             Submit
           </button>
         )}
-        {user.role === "Admin" && row.status === "Pending Review" && (
+        {["Admin", "Staff"].includes(user.role) && row.status === "Pending Review" && canReview(row) && (
           <>
             <button className="btn-primary btn-xs" onClick={() => runAction("approve", row)}>
               <CheckCircle size={13} />
@@ -762,96 +794,110 @@ export default function Events() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingEvent ? "Edit Event" : "Create Event"}
-        description="Save drafts freely, then submit complete event details for admin review."
+        description="Save drafts freely, then submit complete event details for review."
+        size="2xl"
       >
-        <div className="space-y-4">
-          <div className="form-grid">
-            <FormField label="Title" required>
-              <input className="input" placeholder="Event title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        <div className="space-y-5">
+          <FormSection title="Basic Event Information" description="Set the public title, event type, description, and objectives.">
+            <div className="form-grid">
+              <FormField label="Title" required>
+                <input className="input h-10" placeholder="Event title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              </FormField>
+              <FormField label="Event Type" required>
+                <input className="input h-10" placeholder="Workshop, outreach, clinic" value={form.eventType} onChange={(e) => setForm({ ...form, eventType: e.target.value })} />
+              </FormField>
+            </div>
+            <FormField label="Description" required>
+              <textarea className="input min-h-[6rem]" placeholder="Describe the event" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </FormField>
-            <FormField label="Event Type" required>
-              <input className="input" placeholder="Workshop, outreach, clinic" value={form.eventType} onChange={(e) => setForm({ ...form, eventType: e.target.value })} />
+            <FormField label="Objectives" required>
+              <textarea className="input min-h-[6rem]" placeholder="List the event objectives" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
             </FormField>
-            <FormField label="Start Date & Time" required>
-              <input type="datetime-local" className="input" value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value, date: e.target.value })} />
-            </FormField>
-            <FormField label="End Date & Time" required>
-              <input type="datetime-local" className="input" value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} />
-            </FormField>
-            <FormField label="Duration Type" required>
-              <select className="input" value={form.durationType} onChange={(e) => setForm({ ...form, durationType: e.target.value })}>
-                <option>One Day</option>
-                <option>Multiple Days</option>
-                <option>Weekly</option>
-              </select>
-            </FormField>
-            <FormField label="Display Time">
-              <input className="input" placeholder="2:00 PM or 9:00 AM - 4:00 PM" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
-            </FormField>
+          </FormSection>
+
+          <FormSection title="Event Duration" description="Use exact start and end times so event cards and reports stay accurate.">
+            <div className="form-grid">
+              <FormField label="Start Date & Time" required>
+                <input type="datetime-local" className="input h-10" value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value, date: e.target.value })} />
+              </FormField>
+              <FormField label="End Date & Time" required>
+                <input type="datetime-local" className="input h-10" value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} />
+              </FormField>
+              <FormField label="Duration Type" required>
+                <select className="input h-10" value={form.durationType} onChange={(e) => setForm({ ...form, durationType: e.target.value })}>
+                  <option>One Day</option>
+                  <option>Multiple Days</option>
+                  <option>Weekly</option>
+                </select>
+              </FormField>
+              <FormField label="Display Time" hint="Optional human-readable time shown on printed or shared details.">
+                <input className="input h-10" placeholder="2:00 PM or 9:00 AM - 4:00 PM" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+              </FormField>
+            </div>
+          </FormSection>
+
+          <FormSection title="Location and Beneficiaries" description="Describe where the work happens, who benefits, and what resources are needed.">
             <FormField label="Location" required>
-              <input className="input" placeholder="Venue or address" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+              <input className="input h-10" placeholder="Venue or address" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
             </FormField>
-            <FormField label="Participant Limit" required>
-              <input type="number" min="1" className="input" value={form.participantLimit} onChange={(e) => setForm({ ...form, participantLimit: e.target.value })} />
-            </FormField>
-            <FormField label="Registration Start" required>
-              <input type="date" className="input" value={form.registrationStartDate} onChange={(e) => setForm({ ...form, registrationStartDate: e.target.value })} />
-            </FormField>
-            <FormField label="Registration End" required>
-              <input type="date" className="input" value={form.registrationEndDate} onChange={(e) => setForm({ ...form, registrationEndDate: e.target.value })} />
-            </FormField>
-          </div>
+            <div className="form-grid">
+              <FormField label="Target Beneficiaries" required>
+                <textarea className="input min-h-[5.5rem]" placeholder="Who will be served?" value={form.targetBeneficiaries} onChange={(e) => setForm({ ...form, targetBeneficiaries: e.target.value })} />
+              </FormField>
+              <FormField label="Required Resources" required>
+                <textarea className="input min-h-[5.5rem]" placeholder="Resources, people, materials" value={form.requiredResources} onChange={(e) => setForm({ ...form, requiredResources: e.target.value })} />
+              </FormField>
+            </div>
+          </FormSection>
 
-          <FormField label="Description" required>
-            <textarea className="input" placeholder="Describe the event" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </FormField>
-          <FormField label="Objectives" required>
-            <textarea className="input" placeholder="List the event objectives" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
-          </FormField>
-          <div className="form-grid">
-            <FormField label="Target Beneficiaries" required>
-              <textarea className="input" placeholder="Who will be served?" value={form.targetBeneficiaries} onChange={(e) => setForm({ ...form, targetBeneficiaries: e.target.value })} />
-            </FormField>
-            <FormField label="Required Resources" required>
-              <textarea className="input" placeholder="Resources, people, materials" value={form.requiredResources} onChange={(e) => setForm({ ...form, requiredResources: e.target.value })} />
-            </FormField>
-          </div>
-
-          <div className="form-grid">
-            <FormField label="Banner Image URL">
-              <input className="input" placeholder="https://..." value={form.bannerImageUrl} onChange={(e) => setForm({ ...form, bannerImageUrl: e.target.value })} />
-            </FormField>
-            <FormField label="Information Image URL">
-              <input className="input" placeholder="https://..." value={form.informationImageUrl} onChange={(e) => setForm({ ...form, informationImageUrl: e.target.value })} />
-            </FormField>
-            <FormField label="Documentation Image URL">
-              <input className="input" placeholder="https://..." value={form.documentationImageUrl} onChange={(e) => setForm({ ...form, documentationImageUrl: e.target.value })} />
-            </FormField>
-            <FormField label="Post Event Image URL">
-              <input className="input" placeholder="https://..." value={form.postEventImageUrl} onChange={(e) => setForm({ ...form, postEventImageUrl: e.target.value })} />
-            </FormField>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
-            <label className="inline-flex items-center gap-2 text-sm text-surface-700">
+          <FormSection title="Capacity and Registration" description="Control participant limit, registration window, and waitlist behavior.">
+            <div className="form-grid">
+              <FormField label="Participant Limit" required>
+                <input type="number" min="1" className="input h-10" value={form.participantLimit} onChange={(e) => setForm({ ...form, participantLimit: e.target.value })} />
+              </FormField>
+              <FormField label="Capacity Rule" required>
+                <select
+                  className="input h-10"
+                  value={form.capacityRule}
+                  onChange={(e) => setForm({ ...form, capacityRule: e.target.value })}
+                >
+                  <option>Allow Waitlist</option>
+                  <option>Block Registration</option>
+                </select>
+              </FormField>
+              <FormField label="Registration Start" required>
+                <input type="date" className="input h-10" value={form.registrationStartDate} onChange={(e) => setForm({ ...form, registrationStartDate: e.target.value })} />
+              </FormField>
+              <FormField label="Registration End" required>
+                <input type="date" className="input h-10" value={form.registrationEndDate} onChange={(e) => setForm({ ...form, registrationEndDate: e.target.value })} />
+              </FormField>
+            </div>
+            <label className="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-700">
               <input
                 type="checkbox"
                 checked={form.waitlistEnabled}
                 onChange={(e) => setForm({ ...form, waitlistEnabled: e.target.checked })}
               />
-              Allow waitlist
+              Allow waitlist when the participant limit is reached
             </label>
-            <select
-              className="input h-9 w-auto"
-              value={form.capacityRule}
-              onChange={(e) => setForm({ ...form, capacityRule: e.target.value })}
-            >
-              <option>Allow Waitlist</option>
-              <option>Block Registration</option>
-            </select>
-          </div>
+          </FormSection>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <FormSection title="Event Images / Documentation" description="Attach the banner, information poster, and documentation images used in event details.">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ImageUrlField label="Banner Image URL" value={form.bannerImageUrl} onChange={(e) => setForm({ ...form, bannerImageUrl: e.target.value })} />
+              <ImageUrlField label="Information Image URL" value={form.informationImageUrl} onChange={(e) => setForm({ ...form, informationImageUrl: e.target.value })} />
+              <ImageUrlField label="Documentation Image URL" value={form.documentationImageUrl} onChange={(e) => setForm({ ...form, documentationImageUrl: e.target.value })} />
+              <ImageUrlField label="Post Event Image URL" value={form.postEventImageUrl} onChange={(e) => setForm({ ...form, postEventImageUrl: e.target.value })} />
+            </div>
+          </FormSection>
+
+          <FormSection title="Submit for Approval" description="Save incomplete work as a draft, or submit completed details to the approval queue.">
+            <div className="rounded-lg bg-surface-50 border border-surface-200 p-3 text-sm text-surface-600">
+              Required fields are marked with red asterisks. If submission fails, the message will identify the field group that needs attention.
+            </div>
+          </FormSection>
+
+          <div className="sticky bottom-0 -mx-6 -mb-6 flex flex-col sm:flex-row sm:justify-end gap-3 border-t border-surface-200 bg-white/95 p-4 backdrop-blur">
             <button type="button" className="btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>
             <button type="button" className="btn-outline" onClick={() => saveEvent("draft")} disabled={submitting}>
               Save Draft
@@ -903,10 +949,12 @@ export default function Events() {
         open={!!detailsEvent}
         onClose={() => setDetailsEvent(null)}
         title={detailsEvent?.title || "Event Details"}
-        description={detailsEvent ? `${detailsEvent.eventType || "Community event"} · ${detailsEvent.location || "Location TBA"}` : ""}
+        size="2xl"
+        description={detailsEvent ? `${detailsEvent.eventType || "Community event"} - ${detailsEvent.location || "Location TBA"}` : ""}
       >
         {detailsEvent && (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            <p className="text-xs font-semibold text-surface-500 uppercase">Overview</p>
             <div className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
               <img src={imageUrlFor(detailsEvent, "Banner") || bayanihanLogo} alt="Event banner" className="w-12 h-12 rounded-lg bg-white object-cover shrink-0" />
               <div className="min-w-0 flex-1">
@@ -943,7 +991,8 @@ export default function Events() {
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="rounded-lg border border-surface-200 p-4 space-y-3">
+              <p className="text-xs font-semibold text-surface-500 uppercase">Purpose and Beneficiaries</p>
               <div>
                 <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Description</p>
                 <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.description || "No description provided."}</p>
@@ -965,7 +1014,7 @@ export default function Events() {
             </div>
 
             {(detailsEvent.eventImages?.length > 0 || detailsEvent.reviewImages?.length > 0) && (
-              <div className="space-y-3">
+              <div className="rounded-lg border border-surface-200 p-4 space-y-3">
                 <p className="text-xs font-semibold text-surface-500 uppercase">Pictures</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {detailsEvent.eventImages?.map((image, index) => (
@@ -989,7 +1038,7 @@ export default function Events() {
             )}
 
             {detailsEvent.progressUpdates?.length > 0 && (
-              <div className="rounded-lg border border-surface-200 p-3">
+              <div className="rounded-lg border border-surface-200 p-4">
                 <p className="text-xs font-semibold text-surface-500 uppercase mb-2">Progress Updates</p>
                 <div className="space-y-2">
                   {detailsEvent.progressUpdates.slice().reverse().map((update, index) => (
@@ -1003,7 +1052,7 @@ export default function Events() {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <div className="sticky bottom-0 -mx-6 -mb-6 flex flex-col sm:flex-row gap-2 border-t border-surface-200 bg-white/95 p-4 backdrop-blur">
               {mainRegistrationButton(detailsEvent)}
               <button className="btn-outline justify-center" onClick={() => navigate("/history")}>Open History</button>
             </div>

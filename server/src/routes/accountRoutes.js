@@ -24,14 +24,14 @@ router.patch("/me/password", protect, changeMyPassword);
 router.get("/me/export", protect, exportMyData);
 router.delete("/me", protect, deactivateMyAccount);
 
-router.use(protect, authorize("Admin"));
-router.get("/", listAccounts);
-router.post("/", requireFields(["name", "email", "password", "role"]), createAccount);
-router.patch("/:id", validateObjectIdParam(), updateAccount);
-router.patch("/:id/password", validateObjectIdParam(), resetAccountPassword);
-router.patch("/:id/ban", validateObjectIdParam(), banAccount);
-router.patch("/:id/unban", validateObjectIdParam(), unbanAccount);
-router.put("/:id", validateObjectIdParam(), updateAccount);
-router.delete("/:id", validateObjectIdParam(), deleteAccount);
+router.use(protect);
+router.get("/", authorize("Admin", "Staff"), listAccounts);
+router.post("/", authorize("Admin"), requireFields(["name", "email", "password", "role"]), createAccount);
+router.patch("/:id", authorize("Admin", "Staff"), validateObjectIdParam(), updateAccount);
+router.patch("/:id/password", authorize("Admin"), validateObjectIdParam(), resetAccountPassword);
+router.patch("/:id/ban", authorize("Admin", "Staff"), validateObjectIdParam(), banAccount);
+router.patch("/:id/unban", authorize("Admin", "Staff"), validateObjectIdParam(), unbanAccount);
+router.put("/:id", authorize("Admin", "Staff"), validateObjectIdParam(), updateAccount);
+router.delete("/:id", authorize("Admin"), validateObjectIdParam(), deleteAccount);
 
 export default router;

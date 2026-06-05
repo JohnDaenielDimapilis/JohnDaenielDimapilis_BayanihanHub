@@ -63,6 +63,7 @@ export const fundraisersApi = {
   update: (id, payload) => api(`/fundraisers/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   delete: (id) => api(`/fundraisers/${id}`, { method: "DELETE" }),
   approve: (id, payload = {}) => api(`/fundraisers/${id}/approve`, { method: "PATCH", body: JSON.stringify(payload) }),
+  requestRevision: (id, payload) => api(`/fundraisers/${id}/request-revision`, { method: "PATCH", body: JSON.stringify(payload) }),
   reject: (id, payload = {}) => api(`/fundraisers/${id}/reject`, { method: "PATCH", body: JSON.stringify(payload) })
 };
 

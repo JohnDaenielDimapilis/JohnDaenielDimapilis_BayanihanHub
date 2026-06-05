@@ -61,9 +61,20 @@ export default function Fundraisers() {
     } catch (err) { toast.error(err.message); }
   }
 
-  const statusMap = { pending: "Pending", approved: "Approved", closed: "Closed", rejected: "Rejected" };
+  async function requestRevision(item) {
+    const revisionRemarks = window.prompt("Revision notes for this fundraiser:");
+    if (!revisionRemarks) return;
+    try {
+      await api(`/fundraisers/${item._id}/request-revision`, { method: "PATCH", body: JSON.stringify({ revisionRemarks }) });
+      toast.success("Fundraiser returned for revision");
+      load();
+    } catch (err) { toast.error(err.message); }
+  }
+
+  const statusMap = { pending: "Pending", revision: "Needs Revision", approved: "Approved", closed: "Closed", rejected: "Rejected" };
   const capitalizedFilter = filter === "all" ? "all" : statusMap[filter];
   const userOwned = (item) => (item.createdBy?._id || item.createdBy) === user.id;
+  const canReview = (item) => user.role === "Admin" || (user.role === "Staff" && item.createdBy?.role === "User");
   const viewItems = user.role === "User"
     ? items.filter((item) => userView === "donate" ? ["Approved", "Closed"].includes(item.status) : userOwned(item))
     : items;
@@ -72,6 +83,7 @@ export default function Fundraisers() {
   const statusCounts = {
     all: viewItems.length,
     pending: viewItems.filter((i) => i.status === "Pending").length,
+    revision: viewItems.filter((i) => i.status === "Needs Revision").length,
     approved: viewItems.filter((i) => i.status === "Approved").length,
     closed: viewItems.filter((i) => i.status === "Closed").length,
     rejected: viewItems.filter((i) => i.status === "Rejected").length,
@@ -172,9 +184,10 @@ export default function Fundraisers() {
                     </p>
                   )}
 
-                  {user.role === "Admin" && item.status === "Pending" && (
+                  {["Admin", "Staff"].includes(user.role) && item.status === "Pending" && canReview(item) && (
                     <div className="flex gap-2 pt-1 border-t border-surface-100">
                       <button className="btn-primary btn-sm flex-1" onClick={() => setConfirm({ id: item._id, action: "Approved", title: item.title })}>Approve</button>
+                      <button className="btn-outline btn-sm flex-1" onClick={() => requestRevision(item)}>Revision</button>
                       <button className="btn-danger btn-sm flex-1" onClick={() => setConfirm({ id: item._id, action: "Rejected", title: item.title })}>Reject</button>
                     </div>
                   )}

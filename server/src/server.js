@@ -433,11 +433,15 @@ async function seedMemoryDemoData() {
 
   await Achievement.create({
     userId: user._id,
-    points: 120,
-    badges: ["First Event", "Community Helper"],
+    points: 0,
+    badges: ["Level 1 Donator", "Level 2 Helper"],
     totalEventsJoined: 3,
+    totalCompletedAttendedEvents: 1,
     totalDonations: 1,
-    totalFeedbackSubmitted: 1
+    totalDonationAmount: 1500,
+    totalFeedbackSubmitted: 1,
+    donationBadge: "Level 1 Donator",
+    eventBadge: "Level 2 Helper"
   });
 
   await Notification.create([

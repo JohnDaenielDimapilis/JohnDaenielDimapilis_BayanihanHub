@@ -1,4 +1,4 @@
-import { CheckCircle, Inbox, XCircle } from "lucide-react";
+import { CheckCircle, Inbox, RotateCcw, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { donationsApi, eventsApi, fundraisersApi } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
@@ -103,6 +103,23 @@ export default function ApprovalRequests() {
     }
   }
 
+  async function requestRevision(row) {
+    const revisionRemarks = window.prompt(`Revision notes for this ${row.type.toLowerCase()}:`);
+    if (!revisionRemarks) return;
+    try {
+      if (row.type === "Event") await eventsApi.requestRevision(row.id, { revisionRemarks });
+      if (row.type === "Fundraiser") await fundraisersApi.requestRevision(row.id, { revisionRemarks });
+      toast.success(`${row.type} returned for revision`);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  function canAct(row) {
+    return user.role === "Admin" || (["Event", "Fundraiser"].includes(row.type) && row.source?.createdBy?.role === "User");
+  }
+
   const columns = [
     { key: "type", header: "Request Type", accessor: "type", render: (row) => <span className="badge badge-neutral">{row.type}</span> },
     { key: "requestedBy", header: "Requested By", accessor: "requestedBy" },
@@ -113,18 +130,24 @@ export default function ApprovalRequests() {
       key: "actions",
       header: "",
       sortable: false,
-      render: (row) => user.role === "Admin" ? (
+      render: (row) => canAct(row) ? (
         <div className="flex items-center justify-end gap-2">
           <button className="btn-primary btn-xs" onClick={() => approve(row)}>
             <CheckCircle size={13} />
             Approve
           </button>
+          {["Event", "Fundraiser"].includes(row.type) && (
+            <button className="btn-outline btn-xs" onClick={() => requestRevision(row)}>
+              <RotateCcw size={13} />
+              Revision
+            </button>
+          )}
           <button className="btn-danger btn-xs" onClick={() => reject(row)}>
             <XCircle size={13} />
             Reject
           </button>
         </div>
-      ) : <span className="text-xs text-surface-400">Waiting for Admin</span>
+      ) : <span className="text-xs text-surface-400">Admin only</span>
     }
   ];
 
@@ -135,7 +158,7 @@ export default function ApprovalRequests() {
           <Inbox size={22} className="text-surface-400" />
           <h1>Approval Requests</h1>
         </div>
-        <p>Track event, fundraiser, and donation requests that need Admin action</p>
+        <p>Track event, fundraiser, and donation requests that need approval action</p>
       </div>
 
       <DataTable

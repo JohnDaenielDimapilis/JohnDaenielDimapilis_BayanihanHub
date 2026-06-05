@@ -15,6 +15,7 @@ const statusConfig = {
   available: { label: "Available", class: "badge-success" },
   waitlisted: { label: "Waitlisted", class: "badge-warning" },
   "pending review": { label: "Pending Review", class: "badge-warning" },
+  "needs revision": { label: "Needs Revision", class: "badge-warning" },
   pending: { label: "Pending", class: "badge-warning" },
   submitted: { label: "Submitted", class: "badge-warning" },
   "under review": { label: "Under Review", class: "badge-warning" },

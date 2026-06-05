@@ -2,35 +2,64 @@ import Achievement from "../models/Achievement.js";
 import Donation from "../models/Donation.js";
 import Feedback from "../models/Feedback.js";
 import Participant from "../models/Participant.js";
+import mongoose from "mongoose";
+
+const DONATION_MILESTONES = [
+  { threshold: 500, label: "Level 1 Donator" },
+  { threshold: 2000, label: "Level 2 Donator" },
+  { threshold: 5000, label: "Level 3 Donator" },
+  { threshold: 7500, label: "Level 4 Donator" },
+  { threshold: 10000, label: "Level 5 Donator" }
+];
+
+const EVENT_MILESTONES = [
+  { threshold: 1, label: "Level 1 Helper" },
+  { threshold: 3, label: "Level 2 Helper" },
+  { threshold: 5, label: "Level 3 Helper" },
+  { threshold: 7, label: "Level 4 Helper" },
+  { threshold: 10, label: "Level 5 Helper" }
+];
+
+function pickMilestone(value, milestones) {
+  return milestones.reduce((best, milestone) => (
+    Number(value || 0) >= milestone.threshold ? milestone : best
+  ), null);
+}
 
 export async function updateUserAchievement(userId) {
-  const [totalEventsJoined, totalDonations, totalFeedbackSubmitted] = await Promise.all([
+  const objectUserId = mongoose.Types.ObjectId.isValid(String(userId))
+    ? new mongoose.Types.ObjectId(String(userId))
+    : userId;
+
+  const [totalEventsJoined, totalCompletedAttendedEvents, donationSummary, totalFeedbackSubmitted] = await Promise.all([
     Participant.countDocuments({ userId, participationStatus: { $ne: "Cancelled" } }),
-    Donation.countDocuments({ donor: userId, donationStatus: "Verified" }),
+    Participant.countDocuments({ userId, participationStatus: "Completed", attendanceStatus: "Present" }),
+    Donation.aggregate([
+      { $match: { donor: objectUserId, donationStatus: "Verified" } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" }, count: { $sum: 1 } } }
+    ]),
     Feedback.countDocuments({ userId })
   ]);
 
-  const badges = [];
-  if (totalEventsJoined >= 1) badges.push("Event Participant");
-  if (totalEventsJoined >= 3) badges.push("Community Helper");
-  if (totalDonations >= 1) badges.push("Donor");
-  if (totalDonations >= 3) badges.push("Generous Supporter");
-  if (totalFeedbackSubmitted >= 1) badges.push("Feedback Contributor");
-
-  const points =
-    totalEventsJoined * 10 +
-    totalDonations * 10 +
-    totalFeedbackSubmitted * 5;
+  const totalDonations = donationSummary[0]?.count || 0;
+  const totalDonationAmount = donationSummary[0]?.totalAmount || 0;
+  const donationBadge = pickMilestone(totalDonationAmount, DONATION_MILESTONES)?.label || "";
+  const eventBadge = pickMilestone(totalEventsJoined, EVENT_MILESTONES)?.label || "";
+  const badges = [donationBadge, eventBadge].filter(Boolean);
 
   return Achievement.findOneAndUpdate(
     { userId },
     {
       userId,
-      points,
+      points: 0,
       badges,
       totalEventsJoined,
+      totalCompletedAttendedEvents,
       totalDonations,
-      totalFeedbackSubmitted
+      totalDonationAmount,
+      totalFeedbackSubmitted,
+      donationBadge,
+      eventBadge
     },
     { new: true, upsert: true }
   );
@@ -45,7 +74,7 @@ export async function getAchievements(req, res) {
 
     const achievements = await Achievement.find({})
       .populate("userId", "name email role")
-      .sort({ points: -1 });
+      .sort({ totalDonationAmount: -1, totalEventsJoined: -1, totalCompletedAttendedEvents: -1 });
 
     res.status(200).json(achievements);
   } catch (error) {

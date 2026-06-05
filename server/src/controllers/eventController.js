@@ -163,14 +163,16 @@ async function logEventChange(req, event, action, oldStatus, extra = {}) {
   });
 }
 
-async function notifyAdmins(title, message, eventId) {
-  const admins = await User.find({ role: "Admin", isActive: { $ne: false } }).select("_id");
-  return createNotifications(admins.map((admin) => ({
-    userId: admin._id,
+async function notifyEventReviewers(event, title, message) {
+  const creator = await User.findById(event.createdBy).select("role");
+  const roles = creator?.role === "User" ? ["Admin", "Staff"] : ["Admin"];
+  const reviewers = await User.find({ role: { $in: roles }, isActive: { $ne: false } }).select("_id");
+  return createNotifications(reviewers.map((reviewer) => ({
+    userId: reviewer._id,
     title,
     message,
     type: "Event",
-    relatedRecordId: eventId
+    relatedRecordId: event._id
   })));
 }
 
@@ -193,6 +195,17 @@ async function notifyCreator(event, title, message) {
     type: "Event",
     relatedRecordId: event._id
   });
+}
+
+async function ensureCanReviewEvent(req, event, res) {
+  if (req.user.role === "Admin") return true;
+  const creatorId = event.createdBy?._id || event.createdBy;
+  const creator = await User.findById(creatorId).select("role");
+  if (creator?.role !== "User") {
+    res.status(403).json({ message: "Staff can review only user-created event proposals." });
+    return false;
+  }
+  return true;
 }
 
 export async function createEvent(req, res) {
@@ -219,15 +232,15 @@ export async function createEvent(req, res) {
     );
 
     if (event.status === "Pending Review") {
-      await notifyAdmins(
+      await notifyEventReviewers(
+        event,
         "Event pending review",
-        `${req.user.name} submitted "${eventTitle(event)}" for review.`,
-        event._id
+        `${req.user.name} submitted "${eventTitle(event)}" for review.`
       );
     }
 
     res.status(201).json({
-      message: event.status === "Pending Review" ? "Event submitted for admin review." : "Event saved as draft.",
+      message: event.status === "Pending Review" ? "Event submitted for review." : "Event saved as draft.",
       event
     });
   } catch (error) {
@@ -331,10 +344,10 @@ export async function updateEvent(req, res) {
     await logEventChange(req, event, "Event Updated", oldStatus);
 
     if (event.status === "Pending Review" && oldStatus !== "Pending Review") {
-      await notifyAdmins(
+      await notifyEventReviewers(
+        event,
         "Event pending review",
-        `${req.user.name} submitted updates to "${eventTitle(event)}".`,
-        event._id
+        `${req.user.name} submitted updates to "${eventTitle(event)}".`
       );
     }
 
@@ -433,10 +446,10 @@ export async function submitEvent(req, res) {
     await event.save();
 
     await logEventChange(req, event, "Event Submitted for Review", oldStatus);
-    await notifyAdmins(
+    await notifyEventReviewers(
+      event,
       "Event pending review",
-      `${req.user.name} submitted "${eventTitle(event)}" for review.`,
-      event._id
+      `${req.user.name} submitted "${eventTitle(event)}" for review.`
     );
 
     res.status(200).json({ message: "Event submitted for review.", event });
@@ -456,6 +469,7 @@ export async function approveEvent(req, res) {
     if (event.status !== "Pending Review") {
       return res.status(400).json({ message: "Only events pending review can be approved." });
     }
+    if (!(await ensureCanReviewEvent(req, event, res))) return;
 
     const criteria = req.body.approvalCriteria || {};
     const approvalCriteria = {
@@ -506,6 +520,7 @@ export async function requestRevisionEvent(req, res) {
     if (event.status !== "Pending Review") {
       return res.status(400).json({ message: "Only pending review events can receive revision requests." });
     }
+    if (!(await ensureCanReviewEvent(req, event, res))) return;
     if (!req.body.revisionRemarks) {
       return res.status(400).json({ message: "Revision remarks are required." });
     }
@@ -543,6 +558,7 @@ export async function rejectEvent(req, res) {
     if (!["Pending Review", "Approved"].includes(event.status)) {
       return res.status(400).json({ message: "Only pending or approved events can be rejected." });
     }
+    if (!(await ensureCanReviewEvent(req, event, res))) return;
 
     if (!req.body.rejectionReason) {
       return res.status(400).json({ message: "A rejection reason is required for the approval trail." });

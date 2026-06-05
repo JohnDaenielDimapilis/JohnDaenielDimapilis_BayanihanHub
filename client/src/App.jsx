@@ -35,7 +35,7 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route path="accounts" element={<ProtectedRoute roles={["Admin"]}><Accounts /></ProtectedRoute>} />
+        <Route path="accounts" element={<ProtectedRoute roles={["Admin", "Staff"]}><Accounts /></ProtectedRoute>} />
         <Route path="approval-requests" element={<ProtectedRoute roles={["Admin", "Staff"]}><ApprovalRequests /></ProtectedRoute>} />
         <Route path="events" element={<Events />} />
         <Route path="history" element={<History />} />

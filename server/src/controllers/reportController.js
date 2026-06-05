@@ -5,6 +5,7 @@ import Feedback from "../models/Feedback.js";
 import Fundraiser from "../models/Fundraiser.js";
 import Participant from "../models/Participant.js";
 import User from "../models/User.js";
+import mongoose from "mongoose";
 
 function dateFilterFromQuery(query, field = "createdAt") {
   const filter = {};
@@ -66,8 +67,23 @@ function textMatch(value) {
   return value ? new RegExp(String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
 }
 
+async function applyCreatorQuery(filter, query, req) {
+  if (!query.creator || req.user.role !== "Admin") return;
+  if (mongoose.Types.ObjectId.isValid(String(query.creator))) {
+    filter.createdBy = query.creator;
+    return;
+  }
+  const search = textMatch(query.creator);
+  const creators = await User.find({ $or: [{ name: search }, { email: search }] }).select("_id");
+  filter.createdBy = { $in: creators.map((creator) => creator._id) };
+}
+
 function countByStatus(records, status) {
   return records.filter((record) => record.status === status).length;
+}
+
+function activeUserFilter() {
+  return { isActive: { $ne: false }, accountStatus: "Active" };
 }
 
 function groupBy(records, key) {
@@ -122,7 +138,7 @@ export async function getReports(req, res) {
   try {
     if (req.user.role === "Admin") {
       const [
-        totalUsers,
+        activeUsers,
         events,
         participants,
         fundraisers,
@@ -130,10 +146,10 @@ export async function getReports(req, res) {
         feedbackRecords,
         totalAchievements
       ] = await Promise.all([
-        User.countDocuments(),
-      Event.find({}).select("status actualBeneficiariesServed postEventReport"),
-        Participant.find({}).select("attendanceStatus participationStatus"),
-        Fundraiser.find({}).select("status"),
+        User.countDocuments(activeUserFilter()),
+        Event.find({}).select("status actualBeneficiariesServed postEventReport"),
+        Participant.find({ participationStatus: { $ne: "Cancelled" } }).select("attendanceStatus participationStatus"),
+        Fundraiser.find({ status: { $ne: "Rejected" } }).select("status"),
         Donation.find({}).select("amount donationType donationStatus"),
         Feedback.find({}).select("rating"),
         Achievement.countDocuments()
@@ -150,14 +166,14 @@ export async function getReports(req, res) {
         : 0;
 
       return res.status(200).json({
-        users: totalUsers,
+        users: activeUsers,
         participants: participants.length,
         feedback: { count: feedbackRecords.length, avgRating },
         events: toChartRows(groupBy(events, "status")),
         donations: toAmountRows(groupAmountsBy(donations.filter((item) => item.donationStatus === "Verified"), "donationType")),
         donationStatus: toChartRows(groupBy(donations, "donationStatus")),
         fundraisers: toChartRows(groupBy(fundraisers, "status")),
-        totalUsers,
+        totalUsers: activeUsers,
         totalEvents: events.length,
         pendingEvents: countByStatus(events, "Pending Review"),
         approvedEvents: countByStatus(events, "Approved"),
@@ -170,7 +186,7 @@ export async function getReports(req, res) {
         approvedFundraisers: countByStatus(fundraisers, "Approved"),
         rejectedFundraisers: countByStatus(fundraisers, "Rejected"),
         closedFundraisers: countByStatus(fundraisers, "Closed"),
-        totalDonations: donations.length,
+        totalDonations: donations.filter((item) => item.donationStatus === "Verified").length,
         totalDonationAmount,
         verifiedDonations: donations.filter((item) => item.donationStatus === "Verified").length,
         pendingDonations: donations.filter((item) => ["Pending", "Submitted", "Under Review"].includes(item.donationStatus)).length,
@@ -193,7 +209,7 @@ export async function getReports(req, res) {
     const fundraiserIds = staffFundraisers.map((fundraiser) => fundraiser._id);
 
     const [participants, donations, feedbackRecords] = await Promise.all([
-      Participant.find({ eventId: { $in: eventIds } }).select("attendanceStatus participationStatus"),
+      Participant.find({ eventId: { $in: eventIds }, participationStatus: { $ne: "Cancelled" } }).select("attendanceStatus participationStatus"),
       Donation.find({ fundraiserId: { $in: fundraiserIds } }).select("amount donationType donationStatus"),
       Feedback.find({ eventId: { $in: eventIds } }).select("rating")
     ]);
@@ -225,7 +241,7 @@ export async function getReports(req, res) {
       approvedFundraisers: countByStatus(staffFundraisers, "Approved"),
       rejectedFundraisers: countByStatus(staffFundraisers, "Rejected"),
       closedFundraisers: countByStatus(staffFundraisers, "Closed"),
-      totalDonations: donations.length,
+      totalDonations: donations.filter((item) => item.donationStatus === "Verified").length,
       totalDonationAmount,
       verifiedDonations: donations.filter((item) => item.donationStatus === "Verified").length,
       pendingDonations: donations.filter((item) => ["Pending", "Submitted", "Under Review"].includes(item.donationStatus)).length,
@@ -249,7 +265,8 @@ export async function getEventReport(req, res) {
   try {
     const filter = { ...creatorFilter(req), ...dateFilterFromQuery(req.query, "date") };
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.creator && req.user.role === "Admin") filter.createdBy = req.query.creator;
+    else filter.status = { $ne: "Cancelled" };
+    await applyCreatorQuery(filter, req.query, req);
     if (req.query.search) filter.title = textMatch(req.query.search);
     const records = await Event.find(filter).populate("createdBy", "name email role").sort({ date: -1 });
     res.json(records);
@@ -261,7 +278,7 @@ export async function getEventReport(req, res) {
 export async function getParticipantReport(req, res) {
   try {
     const eventFilter = creatorFilter(req);
-    if (req.query.creator && req.user.role === "Admin") eventFilter.createdBy = req.query.creator;
+    await applyCreatorQuery(eventFilter, req.query, req);
     if (req.query.eventName) eventFilter.title = textMatch(req.query.eventName);
     const eventIds = Object.keys(eventFilter).length
       ? (await Event.find(eventFilter).select("_id")).map((event) => event._id)
@@ -271,6 +288,7 @@ export async function getParticipantReport(req, res) {
     if (eventIds) filter.eventId = { $in: eventIds };
     if (req.query.attendanceStatus) filter.attendanceStatus = req.query.attendanceStatus;
     if (req.query.participationStatus) filter.participationStatus = req.query.participationStatus;
+    else filter.participationStatus = { $ne: "Cancelled" };
 
     const records = await Participant.find(filter)
       .populate("userId", "name email role")
@@ -285,8 +303,8 @@ export async function getParticipantReport(req, res) {
 export async function getDonationReport(req, res) {
   try {
     const fundraiserFilter = creatorFilter(req);
-    if (req.query.creator && req.user.role === "Admin") fundraiserFilter.createdBy = req.query.creator;
-    if (req.query.fundraiserName) fundraiserFilter.title = textMatch(req.query.fundraiserName);
+    await applyCreatorQuery(fundraiserFilter, req.query, req);
+    if (req.query.fundraiserName || req.query.search) fundraiserFilter.title = textMatch(req.query.fundraiserName || req.query.search);
     const fundraiserIds = Object.keys(fundraiserFilter).length
       ? (await Fundraiser.find(fundraiserFilter).select("_id")).map((fundraiser) => fundraiser._id)
       : null;
@@ -294,6 +312,7 @@ export async function getDonationReport(req, res) {
     const filter = { ...dateFilterFromQuery(req.query, "donationDate") };
     if (fundraiserIds) filter.fundraiserId = { $in: fundraiserIds };
     if (req.query.status) filter.donationStatus = req.query.status;
+    else filter.donationStatus = "Verified";
 
     let records = await Donation.find(filter)
       .populate("donor", "name email role")
@@ -313,7 +332,8 @@ export async function getFundraiserReport(req, res) {
   try {
     const filter = { ...creatorFilter(req), ...dateFilterFromQuery(req.query, "createdAt") };
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.creator && req.user.role === "Admin") filter.createdBy = req.query.creator;
+    else filter.status = { $ne: "Rejected" };
+    await applyCreatorQuery(filter, req.query, req);
     if (req.query.search) filter.title = textMatch(req.query.search);
     if (req.query.minTarget || req.query.maxTarget) {
       filter.targetAmount = {};
@@ -330,8 +350,9 @@ export async function getFundraiserReport(req, res) {
 export async function getFeedbackReport(req, res) {
   try {
     const eventFilter = creatorFilter(req);
-    if (req.query.creator && req.user.role === "Admin") eventFilter.createdBy = req.query.creator;
+    await applyCreatorQuery(eventFilter, req.query, req);
     if (req.query.eventName) eventFilter.title = textMatch(req.query.eventName);
+    eventFilter.status = { $ne: "Cancelled" };
     const eventIds = Object.keys(eventFilter).length
       ? (await Event.find(eventFilter).select("_id")).map((event) => event._id)
       : null;
@@ -353,6 +374,44 @@ export async function getFeedbackReport(req, res) {
   }
 }
 
+export async function getUserReport(req, res) {
+  try {
+    const filter = { ...dateFilterFromQuery(req.query, "createdAt") };
+
+    if (req.user.role === "Staff") {
+      filter.role = "User";
+    } else if (["User", "Staff", "Admin"].includes(req.query.role)) {
+      filter.role = req.query.role;
+    }
+
+    if (req.query.status === "Active") {
+      Object.assign(filter, activeUserFilter());
+    } else if (req.query.status === "Temporarily Banned") {
+      filter.accountStatus = "Temporarily Banned";
+    } else if (req.query.status === "Disabled") {
+      filter.$or = [{ accountStatus: "Disabled" }, { isActive: false }];
+    } else {
+      Object.assign(filter, activeUserFilter());
+    }
+
+    if (req.query.search) {
+      const search = textMatch(req.query.search);
+      filter.$and = [
+        ...(filter.$and || []),
+        { $or: [{ name: search }, { email: search }] }
+      ];
+    }
+
+    const records = await User.find(filter)
+      .select("-password")
+      .populate("bannedBy", "name email role")
+      .sort({ createdAt: -1 });
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load user report.", error: error.message });
+  }
+}
+
 export async function exportReport(req, res) {
   try {
     const type = req.query.type || "events";
@@ -361,7 +420,8 @@ export async function exportReport(req, res) {
       participants: getParticipantReport,
       donations: getDonationReport,
       fundraisers: getFundraiserReport,
-      feedback: getFeedbackReport
+      feedback: getFeedbackReport,
+      users: getUserReport
     }[type];
     if (!response) return res.status(400).json({ message: "Unknown report type." });
     return response(req, res);

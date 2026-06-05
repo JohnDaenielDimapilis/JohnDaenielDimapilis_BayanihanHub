@@ -3,14 +3,16 @@ import User from "../models/User.js";
 import { createLog } from "./logController.js";
 import { createNotification, createNotifications } from "./notificationController.js";
 
-async function notifyAdmins(title, message, fundraiserId) {
-  const admins = await User.find({ role: "Admin", isActive: { $ne: false } }).select("_id");
-  return createNotifications(admins.map((admin) => ({
-    userId: admin._id,
+async function notifyFundraiserReviewers(fundraiser, title, message) {
+  const creator = await User.findById(fundraiser.createdBy).select("role");
+  const roles = creator?.role === "User" ? ["Admin", "Staff"] : ["Admin"];
+  const reviewers = await User.find({ role: { $in: roles }, isActive: { $ne: false } }).select("_id");
+  return createNotifications(reviewers.map((reviewer) => ({
+    userId: reviewer._id,
     title,
     message,
     type: "Donation",
-    relatedRecordId: fundraiserId
+    relatedRecordId: fundraiser._id
   })));
 }
 
@@ -22,6 +24,17 @@ async function notifyCreator(fundraiser, title, message) {
     type: "Donation",
     relatedRecordId: fundraiser._id
   });
+}
+
+async function ensureCanReviewFundraiser(req, fundraiser, res) {
+  if (req.user.role === "Admin") return true;
+  const creatorId = fundraiser.createdBy?._id || fundraiser.createdBy;
+  const creator = await User.findById(creatorId).select("role");
+  if (creator?.role !== "User") {
+    res.status(403).json({ message: "Staff can review only user-created fundraiser proposals." });
+    return false;
+  }
+  return true;
 }
 
 export async function createFundraiser(req, res) {
@@ -76,15 +89,15 @@ export async function createFundraiser(req, res) {
     });
 
     if (fundraiser.status === "Pending") {
-      await notifyAdmins(
+      await notifyFundraiserReviewers(
+        fundraiser,
         "Fundraiser pending approval",
-        `${req.user.name} submitted "${fundraiser.title}" for review.`,
-        fundraiser._id
+        `${req.user.name} submitted "${fundraiser.title}" for review.`
       );
     }
 
     res.status(201).json({
-      message: req.user.role === "Admin" ? "Fundraiser created and approved." : "Fundraiser created and submitted for admin approval.",
+      message: req.user.role === "Admin" ? "Fundraiser created and approved." : "Fundraiser created and submitted for review.",
       fundraiser
     });
   } catch (error) {
@@ -168,7 +181,12 @@ export async function updateFundraiser(req, res) {
       if (req.body[field] !== undefined) fundraiser[field] = req.body[field];
     });
 
-    if (req.user.role !== "Admin") fundraiser.status = "Pending";
+    if (req.user.role !== "Admin") {
+      fundraiser.status = "Pending";
+      fundraiser.revisionRemarks = undefined;
+      fundraiser.revisionRequestedBy = undefined;
+      fundraiser.revisionRequestedAt = undefined;
+    }
     await fundraiser.save();
 
     await createLog({
@@ -190,12 +208,12 @@ export async function updateFundraiser(req, res) {
       await notifyCreator(
         fundraiser,
         "Fundraiser returned to review",
-        `"${fundraiser.title}" was updated and returned to the admin approval queue.`
+        `"${fundraiser.title}" was updated and returned to the approval queue.`
       );
-      await notifyAdmins(
+      await notifyFundraiserReviewers(
+        fundraiser,
         "Fundraiser pending approval",
-        `${req.user.name} updated "${fundraiser.title}" for review.`,
-        fundraiser._id
+        `${req.user.name} updated "${fundraiser.title}" for review.`
       );
     }
 
@@ -248,6 +266,10 @@ export async function approveFundraiser(req, res) {
     if (!fundraiser) {
       return res.status(404).json({ message: "Fundraiser not found." });
     }
+    if (fundraiser.status !== "Pending") {
+      return res.status(400).json({ message: "Only pending fundraisers can be approved." });
+    }
+    if (!(await ensureCanReviewFundraiser(req, fundraiser, res))) return;
 
     const { approvalCriteria, approvalRemarks } = req.body;
 
@@ -296,14 +318,18 @@ export async function rejectFundraiser(req, res) {
     if (!fundraiser) {
       return res.status(404).json({ message: "Fundraiser not found." });
     }
+    if (!["Pending", "Needs Revision", "Approved"].includes(fundraiser.status)) {
+      return res.status(400).json({ message: "Only pending, revision, or approved fundraisers can be rejected." });
+    }
+    if (!(await ensureCanReviewFundraiser(req, fundraiser, res))) return;
 
-    fundraiser.status = "Rejected";
-    fundraiser.rejectedBy = req.user._id;
-    fundraiser.rejectedAt = new Date();
     if (!req.body.rejectionReason) {
       return res.status(400).json({ message: "A rejection reason is required for the approval trail." });
     }
 
+    fundraiser.status = "Rejected";
+    fundraiser.rejectedBy = req.user._id;
+    fundraiser.rejectedAt = new Date();
     fundraiser.rejectionReason = req.body.rejectionReason;
     await fundraiser.save();
 
@@ -335,6 +361,55 @@ export async function rejectFundraiser(req, res) {
     });
   } catch (error) {
     res.status(500).json({ message: "Fundraiser rejection failed.", error: error.message });
+  }
+}
+
+export async function requestRevisionFundraiser(req, res) {
+  try {
+    const fundraiser = await Fundraiser.findById(req.params.id);
+
+    if (!fundraiser) {
+      return res.status(404).json({ message: "Fundraiser not found." });
+    }
+    if (fundraiser.status !== "Pending") {
+      return res.status(400).json({ message: "Only pending fundraisers can receive revision requests." });
+    }
+    if (!(await ensureCanReviewFundraiser(req, fundraiser, res))) return;
+    if (!req.body.revisionRemarks) {
+      return res.status(400).json({ message: "Revision remarks are required." });
+    }
+
+    fundraiser.status = "Needs Revision";
+    fundraiser.revisionRemarks = req.body.revisionRemarks;
+    fundraiser.revisionRequestedBy = req.user._id;
+    fundraiser.revisionRequestedAt = new Date();
+    await fundraiser.save();
+
+    await createLog({
+      userId: req.user._id,
+      role: req.user.role,
+      action: "Fundraiser Revision Requested",
+      module: "Fundraiser",
+      status: "Success",
+      details: {
+        recordId: fundraiser._id,
+        recordOwner: fundraiser.createdBy,
+        newValue: { status: fundraiser.status },
+        reason: fundraiser.revisionRemarks,
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent")
+      }
+    });
+
+    await notifyCreator(
+      fundraiser,
+      "Fundraiser needs revision",
+      `"${fundraiser.title}" was returned for revision: ${fundraiser.revisionRemarks}`
+    );
+
+    res.status(200).json({ message: "Revision request sent.", fundraiser });
+  } catch (error) {
+    res.status(500).json({ message: "Fundraiser revision request failed.", error: error.message });
   }
 }
 

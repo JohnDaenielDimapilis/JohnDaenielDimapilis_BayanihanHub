@@ -33,7 +33,7 @@ const navSections = [
   {
     label: "Administration",
     links: [
-      { to: "/accounts", label: "Accounts", icon: UserCog, roles: ["Admin"] },
+      { to: "/accounts", label: "Accounts", icon: UserCog, roles: ["Admin", "Staff"] },
       { to: "/approval-requests", label: "Approval Requests", icon: Inbox, roles: ["Admin", "Staff"] },
       { to: "/reports", label: "Reports", icon: ChartNoAxesCombined, roles: ["Admin", "Staff"] },
       { to: "/logs", label: "Activity Logs", icon: ClipboardList, roles: ["Admin"] },

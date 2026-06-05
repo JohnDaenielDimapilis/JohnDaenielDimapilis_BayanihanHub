@@ -23,7 +23,9 @@ If `server/.env` does not provide a working `MONGO_URI`, BayanihanHub starts an 
 - Approved and pending fundraisers with beneficiary/place fields and seeded fundraiser progress updates
 - Verified and submitted donations with donor messages
 - Feedback analytics data with sample review picture URLs
-- User notifications, achievements, and activity logs
+- User notifications, milestone achievements, and activity logs
+- Achievement dummy data uses total-based badges only: `Level 1 Donator` from verified donation amount and `Level 2 Helper` from total events joined. No average or computed points are used.
+- Staff can review the seeded user-submitted event and fundraiser proposals; staff-created proposals remain for Admin review.
 
 ## QR Attendance Test
 
