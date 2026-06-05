@@ -6,13 +6,15 @@ import Participant from "../models/Participant.js";
 export async function updateUserAchievement(userId) {
   const [totalEventsJoined, totalDonations, totalFeedbackSubmitted] = await Promise.all([
     Participant.countDocuments({ userId, participationStatus: { $ne: "Cancelled" } }),
-    Donation.countDocuments({ donor: userId }),
+    Donation.countDocuments({ donor: userId, donationStatus: "Verified" }),
     Feedback.countDocuments({ userId })
   ]);
 
   const badges = [];
   if (totalEventsJoined >= 1) badges.push("Event Participant");
+  if (totalEventsJoined >= 3) badges.push("Community Helper");
   if (totalDonations >= 1) badges.push("Donor");
+  if (totalDonations >= 3) badges.push("Generous Supporter");
   if (totalFeedbackSubmitted >= 1) badges.push("Feedback Contributor");
 
   const points =

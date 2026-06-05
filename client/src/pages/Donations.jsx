@@ -16,7 +16,7 @@ export default function Donations() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [filters, setFilters] = useState({ startDate: "", endDate: "", status: "all", fundraiser: "all", donor: "", type: "all" });
+  const [filters, setFilters] = useState({ period: "all", startDate: "", endDate: "" });
   const [form, setForm] = useState({
     fundraiser: "",
     amount: "",
@@ -24,6 +24,7 @@ export default function Donations() {
     purpose: "",
     paymentReference: "",
     proofOfPayment: "",
+    message: "",
     donorAnonymous: false
   });
 
@@ -51,11 +52,12 @@ export default function Donations() {
           donationPurpose: form.purpose,
           paymentReference: form.paymentReference,
           proofOfPayment: form.proofOfPayment,
+          message: form.message,
           donorAnonymous: form.donorAnonymous,
         }),
       });
       toast.success("Donation submitted for verification");
-      setForm({ fundraiser: "", amount: "", donationType: "Cash", purpose: "", paymentReference: "", proofOfPayment: "", donorAnonymous: false });
+      setForm({ fundraiser: "", amount: "", donationType: "Cash", purpose: "", paymentReference: "", proofOfPayment: "", message: "", donorAnonymous: false });
       setModalOpen(false);
       load();
     } catch (err) { toast.error(err.message); }
@@ -97,16 +99,26 @@ export default function Donations() {
 
   const filteredDonations = donations.filter((donation) => {
     const donationDate = new Date(donation.donationDate || donation.createdAt);
-    if (filters.startDate && donationDate < new Date(filters.startDate)) return false;
-    if (filters.endDate) {
-      const end = new Date(filters.endDate);
-      end.setHours(23, 59, 59, 999);
-      if (donationDate > end) return false;
+    const now = new Date();
+    if (filters.period === "day" && donationDate.toDateString() !== now.toDateString()) return false;
+    if (filters.period === "week") {
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      if (donationDate < weekStart || donationDate > weekEnd) return false;
     }
-    if (filters.status !== "all" && donation.donationStatus !== filters.status) return false;
-    if (filters.fundraiser !== "all" && (donation.fundraiserId?._id || donation.fundraiserId) !== filters.fundraiser) return false;
-    if (filters.type !== "all" && donation.donationType !== filters.type) return false;
-    if (filters.donor && !String(donation.donorAnonymous ? "Anonymous Donor" : donation.donor?.name || "").toLowerCase().includes(filters.donor.toLowerCase())) return false;
+    if (filters.period === "month" && (donationDate.getFullYear() !== now.getFullYear() || donationDate.getMonth() !== now.getMonth())) return false;
+    if (filters.period === "custom") {
+      if (filters.startDate && donationDate < new Date(filters.startDate)) return false;
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (donationDate > end) return false;
+      }
+    }
     return true;
   });
 
@@ -114,6 +126,7 @@ export default function Donations() {
     {
       key: "donor",
       header: "Donor",
+      sortable: false,
       accessor: (row) => row.donorAnonymous ? "Anonymous" : row.donor?.name || "Anonymous",
       render: (row) => (
         <div className="flex items-center gap-3">
@@ -129,42 +142,56 @@ export default function Donations() {
     {
       key: "amount",
       header: "Amount",
+      sortable: false,
       accessor: (row) => Number(row.amount),
       render: (row) => <span className="text-sm font-semibold text-surface-900">PHP {Number(row.amount).toLocaleString()}</span>,
     },
     {
       key: "type",
       header: "Type",
+      sortable: false,
       accessor: "donationType",
       render: (row) => <span className="badge badge-neutral">{row.donationType}</span>,
     },
     {
       key: "purpose",
       header: "Purpose",
+      sortable: false,
       accessor: "donationPurpose",
       render: (row) => <span className="text-sm text-surface-600 truncate max-w-[200px] block">{row.donationPurpose}</span>,
     },
     {
       key: "reference",
       header: "Reference",
+      sortable: false,
       accessor: "paymentReference",
       render: (row) => <code className="text-xs bg-surface-100 px-2 py-1 rounded font-mono text-surface-600">{row.paymentReference}</code>,
     },
     {
       key: "proof",
       header: "Proof",
+      sortable: false,
       accessor: "proofOfPayment",
       render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.proofOfPayment || "No proof note"}</span>,
     },
     {
+      key: "message",
+      header: "Message",
+      sortable: false,
+      accessor: "message",
+      render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.message || "No message"}</span>,
+    },
+    {
       key: "status",
       header: "Status",
+      sortable: false,
       accessor: "donationStatus",
       render: (row) => <StatusBadge value={row.donationStatus} />,
     },
     {
       key: "receipt",
       header: "Receipt",
+      sortable: false,
       accessor: "receiptNumber",
       render: (row) => row.receiptNumber ? (
         <code className="text-xs bg-success-50 px-2 py-1 rounded font-mono text-success-700">{row.receiptNumber}</code>
@@ -228,34 +255,25 @@ export default function Donations() {
         </div>
       </div>
 
-      <div className="card-padded grid grid-cols-1 md:grid-cols-6 gap-3">
+      <div className="card-padded grid grid-cols-1 md:grid-cols-4 gap-3">
+        <FormField label="Date">
+          <select className="input h-10" value={filters.period} onChange={(e) => setFilters({ ...filters, period: e.target.value })}>
+            <option value="all">All dates</option>
+            <option value="day">Today</option>
+            <option value="week">This week</option>
+            <option value="month">This month</option>
+            <option value="custom">Custom range</option>
+          </select>
+        </FormField>
         <FormField label="Start Date">
-          <input type="date" className="input h-10" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
+          <input type="date" className="input h-10" value={filters.startDate} onChange={(e) => setFilters({ ...filters, period: "custom", startDate: e.target.value })} disabled={filters.period !== "custom"} />
         </FormField>
         <FormField label="End Date">
-          <input type="date" className="input h-10" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
+          <input type="date" className="input h-10" value={filters.endDate} onChange={(e) => setFilters({ ...filters, period: "custom", endDate: e.target.value })} disabled={filters.period !== "custom"} />
         </FormField>
-        <FormField label="Status">
-          <select className="input h-10" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-            <option value="all">All statuses</option>
-            {["Pending", "Submitted", "Under Review", "Verified", "Rejected", "Refunded", "Cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}
-          </select>
-        </FormField>
-        <FormField label="Fundraiser">
-          <select className="input h-10" value={filters.fundraiser} onChange={(e) => setFilters({ ...filters, fundraiser: e.target.value })}>
-            <option value="all">All fundraisers</option>
-            {fundraisers.map((fundraiser) => <option key={fundraiser._id} value={fundraiser._id}>{fundraiser.title}</option>)}
-          </select>
-        </FormField>
-        <FormField label="Type">
-          <select className="input h-10" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}>
-            <option value="all">All types</option>
-            {["Cash", "Bank Transfer", "In-kind", "Other"].map((type) => <option key={type} value={type}>{type}</option>)}
-          </select>
-        </FormField>
-        <FormField label="Donor">
-          <input className="input h-10" placeholder="Donor name" value={filters.donor} onChange={(e) => setFilters({ ...filters, donor: e.target.value })} />
-        </FormField>
+        <div className="flex items-end">
+          <button className="btn-outline w-full" onClick={() => setFilters({ period: "all", startDate: "", endDate: "" })}>Reset Date</button>
+        </div>
       </div>
 
       <DataTable
@@ -297,6 +315,9 @@ export default function Donations() {
           </FormField>
           <FormField label="Proof Details">
             <textarea className="input" placeholder="Paste receipt link, transaction note, or upload reference" value={form.proofOfPayment} onChange={(e) => setForm({ ...form, proofOfPayment: e.target.value })} />
+          </FormField>
+          <FormField label="Message">
+            <textarea className="input" placeholder="Optional message for the beneficiary or fundraiser team" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
           </FormField>
           <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm text-surface-700">
             <input

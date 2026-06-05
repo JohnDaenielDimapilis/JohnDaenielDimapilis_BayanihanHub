@@ -48,6 +48,7 @@ export const eventsApi = {
   cancel: (id, payload) => api(`/events/${id}/cancel`, { method: "PATCH", body: JSON.stringify(payload) }),
   complete: (id, payload) => api(`/events/${id}/complete`, { method: "PATCH", body: JSON.stringify(payload) }),
   finish: (id, payload) => api(`/events/${id}/finish`, { method: "PATCH", body: JSON.stringify(payload) }),
+  updateProgress: (id, payload) => api(`/events/${id}/progress`, { method: "PATCH", body: JSON.stringify(payload) }),
   archive: (id) => api(`/events/${id}/archive`, { method: "PATCH" }),
   generateQr: (id) => api(`/events/${id}/generate-qr`, { method: "POST" }),
   getQr: (id) => api(`/events/${id}/qr`),
@@ -61,8 +62,8 @@ export const fundraisersApi = {
   create: (payload) => api("/fundraisers", { method: "POST", body: JSON.stringify(payload) }),
   update: (id, payload) => api(`/fundraisers/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   delete: (id) => api(`/fundraisers/${id}`, { method: "DELETE" }),
-  approve: (id) => api(`/fundraisers/${id}/approve`, { method: "PATCH" }),
-  reject: (id) => api(`/fundraisers/${id}/reject`, { method: "PATCH" })
+  approve: (id, payload = {}) => api(`/fundraisers/${id}/approve`, { method: "PATCH", body: JSON.stringify(payload) }),
+  reject: (id, payload = {}) => api(`/fundraisers/${id}/reject`, { method: "PATCH", body: JSON.stringify(payload) })
 };
 
 // Donations endpoints

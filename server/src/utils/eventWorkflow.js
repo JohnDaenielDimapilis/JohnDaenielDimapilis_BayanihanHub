@@ -26,8 +26,9 @@ export const EVENT_REQUIRED_FIELDS = [
   "eventType",
   "description",
   "objectives",
-  "date",
-  "time",
+  "startDateTime",
+  "endDateTime",
+  "durationType",
   "location",
   "participantLimit",
   "targetBeneficiaries",
@@ -51,14 +52,18 @@ export function getMissingEventFields(event) {
 }
 
 export function validateEventSchedule(event) {
-  const date = event.date ? new Date(event.date) : null;
+  const startDateTime = event.startDateTime ? new Date(event.startDateTime) : null;
+  const endDateTime = event.endDateTime ? new Date(event.endDateTime) : null;
+  const date = startDateTime || (event.date ? new Date(event.date) : null);
   const start = event.registrationStartDate ? new Date(event.registrationStartDate) : null;
   const end = event.registrationEndDate ? new Date(event.registrationEndDate) : null;
 
-  if (!date || Number.isNaN(date.getTime())) return "Event date is invalid.";
+  if (!date || Number.isNaN(date.getTime())) return "Event start date and time is invalid.";
+  if (!endDateTime || Number.isNaN(endDateTime.getTime())) return "Event end date and time is invalid.";
+  if (endDateTime < date) return "Event end date and time must be after the start date and time.";
   if (!start || Number.isNaN(start.getTime())) return "Registration start date is invalid.";
   if (!end || Number.isNaN(end.getTime())) return "Registration end date is invalid.";
   if (start > end) return "Registration start date must be before the registration end date.";
-  if (end > date) return "Registration must end on or before the event date.";
+  if (end > date) return "Registration must end on or before the event starts.";
   return null;
 }

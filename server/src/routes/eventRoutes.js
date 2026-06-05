@@ -19,7 +19,8 @@ import {
   requestRevisionEvent,
   scanEventQr,
   submitEvent,
-  updateEvent
+  updateEvent,
+  updateEventProgress
 } from "../controllers/eventController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 
@@ -32,10 +33,11 @@ router.get("/", getEvents);
 router.get("/user-visible", getUserVisibleEvents);
 router.get("/history", getEventHistory);
 router.get("/:id", getEventById);
-router.post("/", authorize("Admin", "Staff"), createEvent);
-router.put("/:id", authorize("Admin", "Staff"), updateEvent);
-router.delete("/:id", authorize("Admin", "Staff"), deleteEvent);
-router.patch("/:id/submit", authorize("Admin", "Staff"), submitEvent);
+router.post("/", authorize("Admin", "Staff", "User"), createEvent);
+router.put("/:id", authorize("Admin", "Staff", "User"), updateEvent);
+router.delete("/:id", authorize("Admin", "Staff", "User"), deleteEvent);
+router.patch("/:id/submit", authorize("Admin", "Staff", "User"), submitEvent);
+router.patch("/:id/progress", authorize("Admin", "Staff", "User"), updateEventProgress);
 router.patch("/:id/approve", authorize("Admin"), approveEvent);
 router.patch("/:id/request-revision", authorize("Admin"), requestRevisionEvent);
 router.patch("/:id/reject", authorize("Admin"), rejectEvent);

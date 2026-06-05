@@ -2,7 +2,7 @@ import { CalendarDays, LogIn, MapPin, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { eventsApi } from "../api/client.js";
-import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
+import bayanihanLogo from "../assets/bayanihanhub-logo.png";
 import StatusBadge from "../components/StatusBadge.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { SkeletonCard } from "../components/ui/Skeleton.jsx";
@@ -24,7 +24,7 @@ export default function PublicEvents() {
       <header className="bg-navy-900 text-white">
         <div className="max-w-6xl mx-auto px-4 py-5 flex items-center justify-between gap-4">
           <Link to="/public-events" className="flex items-center gap-3 no-underline text-white">
-            <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-10 h-10 rounded-lg bg-white" />
+            <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-40 rounded-lg bg-white object-contain" />
             <div>
               <p className="text-base font-bold leading-tight">BayanihanHub</p>
               <p className="text-xs text-surface-400">Community events</p>

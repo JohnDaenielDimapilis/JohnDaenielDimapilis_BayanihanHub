@@ -1,11 +1,36 @@
 import Fundraiser from "../models/Fundraiser.js";
+import User from "../models/User.js";
 import { createLog } from "./logController.js";
+import { createNotification, createNotifications } from "./notificationController.js";
+
+async function notifyAdmins(title, message, fundraiserId) {
+  const admins = await User.find({ role: "Admin", isActive: { $ne: false } }).select("_id");
+  return createNotifications(admins.map((admin) => ({
+    userId: admin._id,
+    title,
+    message,
+    type: "Donation",
+    relatedRecordId: fundraiserId
+  })));
+}
+
+async function notifyCreator(fundraiser, title, message) {
+  return createNotification({
+    userId: fundraiser.createdBy,
+    title,
+    message,
+    type: "Donation",
+    relatedRecordId: fundraiser._id
+  });
+}
 
 export async function createFundraiser(req, res) {
   try {
     const {
       title,
       purpose,
+      beneficiary,
+      place,
       targetAmount,
       deadline,
       relatedEvent,
@@ -21,6 +46,8 @@ export async function createFundraiser(req, res) {
     const fundraiser = await Fundraiser.create({
       title,
       purpose,
+      beneficiary,
+      place,
       targetAmount,
       deadline,
       relatedEvent: relatedEvent || undefined,
@@ -48,6 +75,14 @@ export async function createFundraiser(req, res) {
       }
     });
 
+    if (fundraiser.status === "Pending") {
+      await notifyAdmins(
+        "Fundraiser pending approval",
+        `${req.user.name} submitted "${fundraiser.title}" for review.`,
+        fundraiser._id
+      );
+    }
+
     res.status(201).json({
       message: req.user.role === "Admin" ? "Fundraiser created and approved." : "Fundraiser created and submitted for admin approval.",
       fundraiser
@@ -59,7 +94,14 @@ export async function createFundraiser(req, res) {
 
 export async function getFundraisers(req, res) {
   try {
-    const filter = req.user.role === "User" ? { status: { $in: ["Approved", "Closed"] } } : {};
+    const filter = req.user.role === "User"
+      ? {
+          $or: [
+            { status: { $in: ["Approved", "Closed"] } },
+            { createdBy: req.user._id }
+          ]
+        }
+      : {};
 
     const fundraisers = await Fundraiser.find(filter)
       .populate("createdBy", "name email role")
@@ -77,7 +119,10 @@ export async function getFundraiserById(req, res) {
     const filter = { _id: req.params.id };
 
     if (req.user.role === "User") {
-      filter.status = { $in: ["Approved", "Closed"] };
+      filter.$or = [
+        { status: { $in: ["Approved", "Closed"] } },
+        { createdBy: req.user._id }
+      ];
     }
 
     const fundraiser = await Fundraiser.findOne(filter)
@@ -102,13 +147,15 @@ export async function updateFundraiser(req, res) {
       return res.status(404).json({ message: "Fundraiser not found." });
     }
 
-    if (req.user.role === "Staff" && fundraiser.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Staff can only update their own fundraisers." });
+    if (req.user.role !== "Admin" && fundraiser.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Creators can only update their own fundraisers." });
     }
 
     const allowedFields = [
       "title",
       "purpose",
+      "beneficiary",
+      "place",
       "targetAmount",
       "deadline",
       "relatedEvent",
@@ -121,7 +168,7 @@ export async function updateFundraiser(req, res) {
       if (req.body[field] !== undefined) fundraiser[field] = req.body[field];
     });
 
-    fundraiser.status = "Pending";
+    if (req.user.role !== "Admin") fundraiser.status = "Pending";
     await fundraiser.save();
 
     await createLog({
@@ -138,6 +185,19 @@ export async function updateFundraiser(req, res) {
         userAgent: req.get("user-agent")
       }
     });
+
+    if (fundraiser.status === "Pending") {
+      await notifyCreator(
+        fundraiser,
+        "Fundraiser returned to review",
+        `"${fundraiser.title}" was updated and returned to the admin approval queue.`
+      );
+      await notifyAdmins(
+        "Fundraiser pending approval",
+        `${req.user.name} updated "${fundraiser.title}" for review.`,
+        fundraiser._id
+      );
+    }
 
     res.status(200).json({
       message: "Fundraiser updated and returned to pending status.",
@@ -156,8 +216,8 @@ export async function deleteFundraiser(req, res) {
       return res.status(404).json({ message: "Fundraiser not found." });
     }
 
-    if (req.user.role === "Staff" && fundraiser.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Staff can only delete their own fundraisers." });
+    if (req.user.role !== "Admin" && fundraiser.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Creators can only delete their own fundraisers." });
     }
 
     await fundraiser.deleteOne();
@@ -214,6 +274,12 @@ export async function approveFundraiser(req, res) {
       }
     });
 
+    await notifyCreator(
+      fundraiser,
+      "Fundraiser approved",
+      `"${fundraiser.title}" was approved and is ready to receive donations.`
+    );
+
     res.status(200).json({
       message: "Fundraiser approved successfully.",
       fundraiser
@@ -256,6 +322,12 @@ export async function rejectFundraiser(req, res) {
         userAgent: req.get("user-agent")
       }
     });
+
+    await notifyCreator(
+      fundraiser,
+      "Fundraiser rejected",
+      `"${fundraiser.title}" was rejected: ${fundraiser.rejectionReason}`
+    );
 
     res.status(200).json({
       message: "Fundraiser rejected successfully.",

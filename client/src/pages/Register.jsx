@@ -1,7 +1,7 @@
 import { Chrome, Eye, EyeOff, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
+import bayanihanLogo from "../assets/bayanihanhub-logo.png";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Register() {
@@ -49,7 +49,7 @@ export default function Register() {
       <div className="hidden lg:flex lg:w-1/2 bg-navy-900 items-center justify-center p-12 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-brand-500/20 to-transparent" />
         <div className="relative z-10 max-w-md">
-          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-14 h-14 rounded-xl mb-8" />
+          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-52 max-w-full rounded-xl bg-white object-contain mb-8" />
           <h1 className="text-4xl font-bold text-white leading-tight mb-4">
             Join the Bayanihan community.
           </h1>
@@ -62,7 +62,7 @@ export default function Register() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-10 h-10 rounded-lg" />
+            <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-36 rounded-lg bg-white object-contain" />
             <span className="text-lg font-bold text-surface-900">BayanihanHub</span>
           </div>
 

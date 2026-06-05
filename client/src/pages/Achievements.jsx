@@ -4,6 +4,7 @@ import { api } from "../api/client.js";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { SkeletonCard } from "../components/ui/Skeleton.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 
 const badgeIcons = {
   gold: { icon: Trophy, bg: "bg-accent-50", text: "text-accent-600", ring: "ring-accent-200" },
@@ -20,18 +21,20 @@ function getBadgeStyle(points) {
 }
 
 export default function Achievements() {
+  const { user } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api("/achievements")
-      .then(setItems)
+      .then((data) => setItems(Array.isArray(data) ? data : data ? [data] : []))
       .catch(() => toast.error("Failed to load achievements"))
       .finally(() => setLoading(false));
   }, []);
 
   const totalPoints = items.reduce((sum, a) => sum + (a.points || 0), 0);
+  const totalBadges = items.reduce((sum, a) => sum + (a.badges?.length || 0), 0);
 
   return (
     <section className="space-y-6 animate-fade-in">
@@ -45,7 +48,7 @@ export default function Achievements() {
           <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Total Badges</span>
           <div className="flex items-center gap-2">
             <Award size={18} className="text-accent-500" />
-            <strong className="text-2xl font-bold text-surface-900">{items.length}</strong>
+            <strong className="text-2xl font-bold text-surface-900">{totalBadges}</strong>
           </div>
         </div>
         <div className="stat-card-component">
@@ -77,6 +80,8 @@ export default function Achievements() {
           {items.map((item) => {
             const style = getBadgeStyle(item.points);
             const Icon = style.icon;
+            const badges = item.badges?.length ? item.badges : ["No badge yet"];
+            const owner = item.userId || item.user || (user.role === "User" ? user : null);
             return (
               <article key={item._id} className="card-padded flex flex-col gap-4 hover:shadow-soft transition-shadow group">
                 <div className="flex items-start gap-4">
@@ -84,16 +89,21 @@ export default function Achievements() {
                     <Icon size={22} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-base font-semibold text-surface-900">{item.badge}</h3>
-                    <p className="text-sm text-surface-500 mt-0.5 line-clamp-2">{item.description}</p>
+                    <h3 className="text-base font-semibold text-surface-900">{owner?.name || "My Achievement"}</h3>
+                    <p className="text-sm text-surface-500 mt-0.5">
+                      {item.totalEventsJoined || 0} events, {item.totalDonations || 0} verified donations, {item.totalFeedbackSubmitted || 0} feedback posts
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {badges.map((badge) => <span key={badge} className="badge badge-info">{badge}</span>)}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-surface-100">
                   <div className="flex items-center gap-3">
                     <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-2xs font-bold">
-                      {(item.user?.name || "U")[0].toUpperCase()}
+                      {(owner?.name || "U")[0].toUpperCase()}
                     </div>
-                    <span className="text-sm text-surface-600">{item.user?.name || "Unknown"}</span>
+                    <span className="text-sm text-surface-600">{owner?.name || "Unknown"}</span>
                   </div>
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent-50 text-accent-700 text-xs font-bold ring-1 ring-inset ring-accent-200">
                     <Zap size={12} />

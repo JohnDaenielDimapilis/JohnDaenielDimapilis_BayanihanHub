@@ -1,8 +1,8 @@
-import { ArrowRight, CalendarDays, Download, Gift, HandCoins, Hourglass, QrCode, ScanLine, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, Award, CalendarDays, Download, Gift, HandCoins, Hourglass, QrCode, ScanLine, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, eventsApi, participantsApi } from "../api/client.js";
-import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
+import bayanihanLogo from "../assets/bayanihanhub-logo.png";
 import BarChart from "../components/charts/BarChart.jsx";
 import DonutChart from "../components/charts/DonutChart.jsx";
 import StatCard from "../components/StatCard.jsx";
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [events, setEvents] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [fundraisers, setFundraisers] = useState([]);
+  const [achievement, setAchievement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [qrPayload, setQrPayload] = useState("");
   const [qrMessage, setQrMessage] = useState("");
@@ -25,12 +26,14 @@ export default function Dashboard() {
       api("/dashboard"),
       api("/events").catch(() => []),
       api("/fundraisers").catch(() => []),
+      user.role === "User" ? api("/achievements").catch(() => null) : Promise.resolve(null),
       user.role === "User" ? participantsApi.getMy().catch(() => []) : Promise.resolve([])
     ])
-      .then(([summary, eventRows, fundraiserRows, registrationRows]) => {
+      .then(([summary, eventRows, fundraiserRows, achievementRow, registrationRows]) => {
         setStats(summary);
         setEvents(eventRows);
         setFundraisers(fundraiserRows);
+        setAchievement(achievementRow);
         setRegistrations(registrationRows);
       })
       .catch(console.error)
@@ -133,7 +136,7 @@ export default function Dashboard() {
     <section className="space-y-6 animate-fade-in">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-12 h-12 rounded-lg shrink-0" />
+          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-14 h-14 rounded-lg bg-white object-contain shrink-0" />
           <div>
             <h1 className="text-2xl font-bold text-surface-900 tracking-tight">
               {greeting}, {user.name?.split(" ")[0]}
@@ -192,7 +195,8 @@ export default function Dashboard() {
       )}
 
       {user.role === "User" && (
-        <div className="card-padded">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="card-padded lg:col-span-2">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-lg bg-info-50 text-info-600 flex items-center justify-center shrink-0">
@@ -217,6 +221,23 @@ export default function Dashboard() {
             </div>
           </div>
           {qrMessage && <p className="mt-3 text-sm font-medium text-surface-700">{qrMessage}</p>}
+          </div>
+          <div className="card-padded">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-accent-50 text-accent-600 flex items-center justify-center shrink-0">
+                <Award size={18} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-surface-900">Achievement Badge</h3>
+                <p className="text-xs text-surface-500">{achievement?.points || 0} points</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(achievement?.badges?.length ? achievement.badges : ["Start by joining an event"]).map((badge) => (
+                <span key={badge} className="badge badge-info">{badge}</span>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -280,7 +301,7 @@ export default function Dashboard() {
               {topFundraisers.map((fundraiser) => {
                 const pct = Math.min(100, Math.round((fundraiser.raisedAmount / fundraiser.targetAmount) * 100));
                 return (
-                  <div key={fundraiser._id}>
+                  <Link key={fundraiser._id} to={`/fundraisers/${fundraiser._id}`} className="block no-underline rounded-lg p-2 -m-2 hover:bg-surface-50">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm font-medium text-surface-700 truncate">{fundraiser.title}</span>
                       <span className="text-xs font-semibold text-surface-500">{pct}%</span>
@@ -295,7 +316,7 @@ export default function Dashboard() {
                       <span className="text-2xs text-surface-400">PHP {Number(fundraiser.raisedAmount).toLocaleString()}</span>
                       <span className="text-2xs text-surface-400">PHP {Number(fundraiser.targetAmount).toLocaleString()}</span>
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </div>

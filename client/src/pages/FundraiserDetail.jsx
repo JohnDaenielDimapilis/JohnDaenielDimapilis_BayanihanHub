@@ -1,4 +1,4 @@
-import { ArrowLeft, Gift, Target, Calendar, User, DollarSign } from "lucide-react";
+import { ArrowLeft, Award, Gift, Target, Calendar, User, DollarSign, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
@@ -20,14 +20,14 @@ export default function FundraiserDetail() {
   const [loading, setLoading] = useState(true);
   const [donating, setDonating] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ amount: "", donationType: "Cash", paymentReference: "", donorAnonymous: false });
+  const [form, setForm] = useState({ amount: "", donationType: "Cash", paymentReference: "", message: "", donorAnonymous: false });
 
   async function loadData() {
     try {
       const fundraiserData = await api(`/fundraisers/${id}`);
       setFundraiser(fundraiserData);
 
-      const allDonations = await api("/donations");
+      const allDonations = await api(`/donations?fundraiserId=${id}`);
       const fundraiserDonations = allDonations.filter((d) => d.fundraiserId?._id === id);
       setDonations(fundraiserDonations);
     } catch (err) {
@@ -60,12 +60,13 @@ export default function FundraiserDetail() {
           donationType: form.donationType,
           donationPurpose: fundraiser.purpose,
           paymentReference: form.paymentReference,
+          message: form.message,
           donorAnonymous: form.donorAnonymous,
         }),
       });
 
       toast.success("Donation submitted for verification");
-      setForm({ amount: "", donationType: "Cash", paymentReference: "", donorAnonymous: false });
+      setForm({ amount: "", donationType: "Cash", paymentReference: "", message: "", donorAnonymous: false });
       setModalOpen(false);
       loadData();
     } catch (err) {
@@ -130,6 +131,18 @@ export default function FundraiserDetail() {
                 <p className="text-surface-700 leading-relaxed">{fundraiser.description}</p>
               </div>
             )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Beneficiary</p>
+                <p className="text-sm font-medium text-surface-800">{fundraiser.beneficiary || "Community beneficiaries"}</p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Place</p>
+                <p className="text-sm font-medium text-surface-800 inline-flex items-center gap-1">
+                  <MapPin size={13} /> {fundraiser.place || "BayanihanHub service area"}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Progress Section */}
@@ -246,6 +259,11 @@ export default function FundraiserDetail() {
                       <p className="text-sm font-semibold text-surface-900">
                         {donation.donorAnonymous ? "Anonymous Donor" : donation.donor?.name || "Anonymous Donor"}
                       </p>
+                      {!donation.donorAnonymous && donation.donor?.showAchievementBadge !== false && (
+                        <span className="inline-flex items-center gap-1 text-2xs font-semibold text-accent-700">
+                          <Award size={11} /> Achievement badge visible
+                        </span>
+                      )}
                       <p className="text-xs text-surface-500">
                         {new Date(donation.donationDate).toLocaleDateString()}
                       </p>
@@ -259,6 +277,7 @@ export default function FundraiserDetail() {
                   <p className="text-xs text-surface-500 badge badge-neutral">
                     {donation.donationType}
                   </p>
+                  {donation.message && <p className="text-xs text-surface-500 max-w-[220px] mt-2">{donation.message}</p>}
                   <div className="mt-1">
                     <StatusBadge value={donation.donationStatus} />
                   </div>
@@ -322,6 +341,15 @@ export default function FundraiserDetail() {
               value={form.paymentReference}
               onChange={(e) => setForm({ ...form, paymentReference: e.target.value })}
               required
+            />
+          </FormField>
+
+          <FormField label="Message">
+            <textarea
+              className="input"
+              placeholder="Optional message for the beneficiary or fundraiser team"
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
             />
           </FormField>
 

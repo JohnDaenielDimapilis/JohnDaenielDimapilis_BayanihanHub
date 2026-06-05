@@ -5,7 +5,7 @@ import { createLog } from "./logController.js";
 
 export async function createFeedback(req, res) {
   try {
-    const { eventId, rating, comment, suggestions } = req.body;
+    const { eventId, rating, comment, suggestions, reviewImages = [] } = req.body;
 
     if (!eventId || !rating || !comment) {
       return res.status(400).json({ message: "Event, rating, and comment are required." });
@@ -41,7 +41,14 @@ export async function createFeedback(req, res) {
       eventId,
       rating,
       comment,
-      suggestions
+      suggestions,
+      reviewImages: Array.isArray(reviewImages)
+        ? reviewImages.filter((image) => image?.imageUrl).map((image) => ({
+            imageUrl: String(image.imageUrl).trim(),
+            caption: image.caption || "",
+            uploadedAt: image.uploadedAt || new Date()
+          }))
+        : []
     });
 
     await createLog({
@@ -75,7 +82,7 @@ export async function getFeedback(req, res) {
       .populate("userId", "name email role")
       .populate({
         path: "eventId",
-        select: "title date location status createdBy",
+        select: "title date startDateTime endDateTime durationType location status createdBy eventImages",
         populate: { path: "createdBy", select: "name email role" }
       })
       .sort({ createdAt: -1 });
@@ -89,7 +96,7 @@ export async function getFeedback(req, res) {
 export async function getMyFeedback(req, res) {
   try {
     const feedback = await Feedback.find({ userId: req.user._id })
-      .populate("eventId", "title date location status")
+      .populate("eventId", "title date startDateTime endDateTime durationType location status eventImages")
       .sort({ createdAt: -1 });
 
     res.status(200).json(feedback);

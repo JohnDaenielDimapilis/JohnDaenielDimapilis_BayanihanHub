@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin, MessageSquare, Star } from "lucide-react";
+import { CalendarDays, ImageIcon, MapPin, MessageSquare, Star } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { eventsApi, feedbackApi } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
@@ -13,7 +13,7 @@ export default function History() {
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ rating: 5, comment: "", suggestions: "" });
+  const [form, setForm] = useState({ rating: 5, comment: "", suggestions: "", imageUrl: "", imageCaption: "" });
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -45,11 +45,12 @@ export default function History() {
         eventId: selected.eventId?._id || selected.eventId,
         rating: Number(form.rating),
         comment: form.comment,
-        suggestions: form.suggestions
+        suggestions: form.suggestions,
+        reviewImages: form.imageUrl ? [{ imageUrl: form.imageUrl, caption: form.imageCaption }] : []
       });
       toast.success("Feedback submitted");
       setSelected(null);
-      setForm({ rating: 5, comment: "", suggestions: "" });
+      setForm({ rating: 5, comment: "", suggestions: "", imageUrl: "", imageCaption: "" });
       load();
     } catch (err) {
       toast.error(err.message);
@@ -159,6 +160,26 @@ export default function History() {
           <FormField label="Suggestions">
             <textarea className="input" value={form.suggestions} onChange={(e) => setForm({ ...form, suggestions: e.target.value })} />
           </FormField>
+          <div className="form-grid">
+            <FormField label="Review Picture URL">
+              <input className="input" placeholder="https://..." value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+            </FormField>
+            <FormField label="Picture Caption">
+              <input className="input" placeholder="Optional caption" value={form.imageCaption} onChange={(e) => setForm({ ...form, imageCaption: e.target.value })} />
+            </FormField>
+          </div>
+          {selected?.eventId?.eventImages?.length > 0 && (
+            <div className="rounded-lg border border-surface-200 p-3">
+              <p className="text-xs font-semibold text-surface-500 uppercase mb-2">Official Pictures</p>
+              <div className="flex flex-wrap gap-2">
+                {selected.eventId.eventImages.map((image, index) => (
+                  <a key={index} className="inline-flex items-center gap-1 text-xs text-brand-600 no-underline" href={image.imageUrl} target="_blank" rel="noreferrer">
+                    <ImageIcon size={12} /> {image.imageType}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-3">
             <button type="button" className="btn-outline" onClick={() => setSelected(null)}>Cancel</button>
             <button className="btn-primary" disabled={submitting}>{submitting ? "Submitting..." : "Submit Feedback"}</button>

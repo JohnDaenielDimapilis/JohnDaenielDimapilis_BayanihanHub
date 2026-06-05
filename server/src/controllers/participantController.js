@@ -1,5 +1,6 @@
 import Event from "../models/Event.js";
 import Participant from "../models/Participant.js";
+import { updateUserAchievement } from "./achievementController.js";
 import { createLog } from "./logController.js";
 import { createNotification } from "./notificationController.js";
 
@@ -55,6 +56,39 @@ async function promoteFromWaitlist(event) {
   return nextParticipant;
 }
 
+function getEventEndDate(event) {
+  const dateSource = event.endDateTime || event.date;
+  if (!dateSource) return null;
+  const date = new Date(dateSource);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getJoinAvailabilityError(event) {
+  if (["Finished", "Cancelled", "Closed", "Archived"].includes(event.status)) {
+    return "This event is no longer accepting registrations.";
+  }
+  if (event.status === "Full") {
+    return "This event is full and cannot accept new registrations.";
+  }
+  if (event.status !== "Open for Registration") {
+    return "Users can only join events that are open for registration.";
+  }
+
+  const eventEnd = getEventEndDate(event);
+  if (eventEnd) {
+    const latestJoin = new Date(eventEnd);
+    latestJoin.setDate(latestJoin.getDate() - 1);
+    latestJoin.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (today > latestJoin) {
+      return "Registration is closed because less than one full day remains before the final event day.";
+    }
+  }
+
+  return null;
+}
+
 export async function joinEvent(req, res) {
   try {
     const event = await Event.findById(req.params.eventId);
@@ -63,9 +97,8 @@ export async function joinEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (!["Open for Registration", "Full"].includes(event.status)) {
-      return res.status(400).json({ message: "Users can only join events that are open for registration." });
-    }
+    const availabilityError = getJoinAvailabilityError(event);
+    if (availabilityError) return res.status(400).json({ message: availabilityError });
 
     const existingParticipant = await Participant.findOne({
       userId: req.user._id,
@@ -102,6 +135,7 @@ export async function joinEvent(req, res) {
     } else {
       participant = await Participant.create(participantData);
     }
+    await updateUserAchievement(req.user._id);
 
     const newJoinedCount = await getJoinedCount(event._id);
     if (newJoinedCount >= Number(event.participantLimit || 0) && event.status !== "Full") {
@@ -161,8 +195,8 @@ export async function getParticipants(req, res) {
     }
 
     const participants = await Participant.find(filter)
-      .populate("userId", "name email role")
-      .populate("eventId", "title date location status createdBy")
+      .populate("userId", "name email role showAchievementBadge")
+      .populate("eventId", "title date startDateTime endDateTime durationType location status createdBy eventImages")
       .populate("verifiedBy", "name email role")
       .sort({ joinedAt: -1 });
 
@@ -175,7 +209,7 @@ export async function getParticipants(req, res) {
 export async function getMyParticipants(req, res) {
   try {
     const participants = await Participant.find({ userId: req.user._id })
-      .populate("eventId", "title date location status createdBy")
+      .populate("eventId", "title date startDateTime endDateTime durationType location status createdBy eventImages")
       .sort({ joinedAt: -1 });
 
     res.status(200).json(participants);
@@ -193,8 +227,8 @@ export async function getEventParticipants(req, res) {
     }
 
     const participants = await Participant.find({ eventId: event._id })
-      .populate("userId", "name email role")
-      .populate("eventId", "title date location status createdBy participantLimit qrGeneratedAt qrExpiresAt")
+      .populate("userId", "name email role showAchievementBadge")
+      .populate("eventId", "title date startDateTime endDateTime durationType location status createdBy participantLimit qrGeneratedAt qrExpiresAt eventImages")
       .populate("verifiedBy", "name email role")
       .sort({ joinedAt: -1 });
 
@@ -226,6 +260,7 @@ export async function updateParticipantStatus(req, res) {
     if (attendanceRemarks !== undefined) participant.attendanceRemarks = attendanceRemarks;
 
     await participant.save();
+    await updateUserAchievement(participant.userId);
 
     await createLog({
       userId: req.user._id,
@@ -275,6 +310,7 @@ export async function cancelOwnRegistration(req, res) {
     participant.cancellationReason = req.body.cancellationReason || "Cancelled by participant";
     participant.waitlistPosition = undefined;
     await participant.save();
+    await updateUserAchievement(req.user._id);
 
     let promoted = null;
     if (wasJoined && ["Full", "Open for Registration"].includes(event.status)) {
@@ -339,6 +375,7 @@ export async function checkInEvent(req, res) {
     participant.checkedInAt = new Date();
     participant.checkInCode = req.body.checkInCode || `BH-${String(participant._id).slice(-6).toUpperCase()}`;
     await participant.save();
+    await updateUserAchievement(req.user._id);
 
     await createLog({
       userId: req.user._id,
@@ -386,6 +423,7 @@ export async function verifyAttendance(req, res) {
     participant.checkInMethod = "Manual";
     if (!participant.checkedInAt) participant.checkedInAt = new Date();
     await participant.save();
+    await updateUserAchievement(participant.userId._id || participant.userId);
 
     await createLog({
       userId: req.user._id,

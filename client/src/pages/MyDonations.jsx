@@ -86,6 +86,12 @@ export default function MyDonations() {
       render: (row) => row.receiptNumber ? <code className="text-xs bg-success-50 px-2 py-1 rounded font-mono text-success-700">{row.receiptNumber}</code> : <span className="text-xs text-surface-400">Pending</span>,
     },
     {
+      key: "message",
+      header: "Message",
+      accessor: "message",
+      render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.message || "No message"}</span>,
+    },
+    {
       key: "proof",
       header: "Proof",
       accessor: "proofOfPayment",

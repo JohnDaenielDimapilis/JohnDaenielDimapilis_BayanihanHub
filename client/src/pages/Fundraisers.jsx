@@ -12,7 +12,7 @@ import { SkeletonCard } from "../components/ui/Skeleton.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const blank = { title: "", purpose: "", description: "", targetAmount: 10000, deadline: "" };
+const blank = { title: "", purpose: "", beneficiary: "", place: "", description: "", targetAmount: 10000, deadline: "" };
 
 export default function Fundraisers() {
   const { user } = useAuth();
@@ -25,6 +25,7 @@ export default function Fundraisers() {
   const [submitting, setSubmitting] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [userView, setUserView] = useState("donate");
 
   async function load() {
     try { setItems(await api("/fundraisers")); }
@@ -62,14 +63,18 @@ export default function Fundraisers() {
 
   const statusMap = { pending: "Pending", approved: "Approved", closed: "Closed", rejected: "Rejected" };
   const capitalizedFilter = filter === "all" ? "all" : statusMap[filter];
-  const filtered = filter === "all" ? items : items.filter((i) => i.status === capitalizedFilter);
+  const userOwned = (item) => (item.createdBy?._id || item.createdBy) === user.id;
+  const viewItems = user.role === "User"
+    ? items.filter((item) => userView === "donate" ? ["Approved", "Closed"].includes(item.status) : userOwned(item))
+    : items;
+  const filtered = filter === "all" ? viewItems : viewItems.filter((i) => i.status === capitalizedFilter);
 
   const statusCounts = {
-    all: items.length,
-    pending: items.filter((i) => i.status === "Pending").length,
-    approved: items.filter((i) => i.status === "Approved").length,
-    closed: items.filter((i) => i.status === "Closed").length,
-    rejected: items.filter((i) => i.status === "Rejected").length,
+    all: viewItems.length,
+    pending: viewItems.filter((i) => i.status === "Pending").length,
+    approved: viewItems.filter((i) => i.status === "Approved").length,
+    closed: viewItems.filter((i) => i.status === "Closed").length,
+    rejected: viewItems.filter((i) => i.status === "Rejected").length,
   };
 
   return (
@@ -79,13 +84,22 @@ export default function Fundraisers() {
           <h1>Fundraisers</h1>
           <p>Manage fundraising campaigns and track progress</p>
         </div>
-        {user.role !== "User" && (
-          <button className="btn-primary" onClick={() => setModalOpen(true)}>
-            <Plus size={16} />
-            New Fundraiser
-          </button>
-        )}
+        <button className="btn-primary" onClick={() => setModalOpen(true)}>
+          <Plus size={16} />
+          New Fundraiser
+        </button>
       </div>
+
+      {user.role === "User" && (
+        <div className="flex gap-2 flex-wrap">
+          <button className={`btn-sm ${userView === "donate" ? "btn-primary" : "btn-ghost"}`} onClick={() => setUserView("donate")}>
+            Donate to Fundraisers
+          </button>
+          <button className={`btn-sm ${userView === "create" ? "btn-primary" : "btn-ghost"}`} onClick={() => setUserView("create")}>
+            Create / Track Fundraisers
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-2 flex-wrap">
         {Object.entries(statusCounts).map(([key, count]) => (
@@ -119,7 +133,7 @@ export default function Fundraisers() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((item) => {
-            const pct = Math.min(100, Math.round((item.raisedAmount / item.targetAmount) * 100));
+            const pct = item.progressPercentage ?? Math.min(100, Math.round((item.raisedAmount / item.targetAmount) * 100));
             return (
               <div
                 key={item._id}
@@ -135,6 +149,7 @@ export default function Fundraisers() {
                       <div className="min-w-0">
                         <h3 className="text-sm font-semibold text-surface-900 truncate">{item.title}</h3>
                         <p className="text-xs text-surface-500 truncate">{item.purpose}</p>
+                        <p className="text-2xs text-surface-400 truncate">{item.beneficiary || "Community beneficiaries"} - {item.place || "Service area"}</p>
                       </div>
                     </div>
                     <StatusBadge value={item.status} />
@@ -164,7 +179,7 @@ export default function Fundraisers() {
                     </div>
                   )}
 
-                  {["Approved", "Closed"].includes(item.status) && user.role === "User" && (
+                  {["Approved", "Closed"].includes(item.status) && user.role === "User" && userView === "donate" && (
                     <button className="btn-primary btn-sm w-full mt-2" onClick={() => navigate(`/fundraisers/${item._id}`)}>
                       {item.status === "Closed" ? "View Report" : "View & Donate"}
                     </button>
@@ -184,6 +199,12 @@ export default function Fundraisers() {
             </FormField>
             <FormField label="Purpose" required>
               <input className="input" placeholder="What is this for?" value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} required />
+            </FormField>
+            <FormField label="Beneficiary" required>
+              <input className="input" placeholder="Who will receive support?" value={form.beneficiary} onChange={(e) => setForm({ ...form, beneficiary: e.target.value })} required />
+            </FormField>
+            <FormField label="Place" required>
+              <input className="input" placeholder="Barangay, city, or service area" value={form.place} onChange={(e) => setForm({ ...form, place: e.target.value })} required />
             </FormField>
             <FormField label="Target Amount (PHP)" required>
               <input type="number" min="1" className="input" value={form.targetAmount} onChange={(e) => setForm({ ...form, targetAmount: e.target.value })} required />

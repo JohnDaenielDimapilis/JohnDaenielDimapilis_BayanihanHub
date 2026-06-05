@@ -98,6 +98,12 @@ function daysFromNow(days) {
   return date;
 }
 
+function daysFromNowAt(days, hour, minute = 0) {
+  const date = daysFromNow(days);
+  date.setHours(hour, minute, 0, 0);
+  return date;
+}
+
 async function seedMemoryDemoData() {
   if (process.env.BAYANIHAN_MEMORY_DB !== "true") return;
   if (await Event.countDocuments()) return;
@@ -121,10 +127,23 @@ async function seedMemoryDemoData() {
     participantLimit: 3,
     registrationStartDate: daysFromNow(-3),
     registrationEndDate: tomorrow,
+    durationType: "One Day",
     waitlistEnabled: true,
     capacityRule: "Allow Waitlist",
     targetBeneficiaries: "Families, youth volunteers, and barangay residents",
-    requiredResources: "Volunteer leads, printed forms, drinking water, tables, first-aid kit"
+    requiredResources: "Volunteer leads, printed forms, drinking water, tables, first-aid kit",
+    eventImages: [
+      {
+        imageUrl: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80",
+        imageType: "Banner",
+        caption: "BayanihanHub community volunteers"
+      },
+      {
+        imageUrl: "https://images.unsplash.com/photo-1584515933487-779824d29309?auto=format&fit=crop&w=900&q=80",
+        imageType: "Information",
+        caption: "Health outreach information reference"
+      }
+    ]
   };
 
   const [
@@ -133,7 +152,8 @@ async function seedMemoryDemoData() {
     closedEvent,
     finishedEvent,
     cancelledEvent,
-    pendingEvent
+    pendingEvent,
+    userProposalEvent
   ] = await Event.create([
     {
       ...commonEventFields,
@@ -142,6 +162,9 @@ async function seedMemoryDemoData() {
       description: "Free wellness checks, blood pressure monitoring, and nutrition guidance for local residents.",
       objectives: "Support preventive care and connect residents with volunteer health workers.",
       date: nextWeek,
+      startDateTime: daysFromNowAt(7, 9),
+      endDateTime: daysFromNowAt(8, 16),
+      durationType: "Multiple Days",
       time: "9:00 AM",
       location: "Barangay San Isidro Covered Court",
       status: "Open for Registration"
@@ -153,6 +176,8 @@ async function seedMemoryDemoData() {
       description: "A small-group packing session for school kits to be distributed before classes resume.",
       objectives: "Prepare complete kits and track donated inventory before release.",
       date: daysFromNow(5),
+      startDateTime: daysFromNowAt(5, 14),
+      endDateTime: daysFromNowAt(5, 17),
       time: "2:00 PM",
       location: "BayanihanHub Office",
       status: "Full"
@@ -164,6 +189,8 @@ async function seedMemoryDemoData() {
       description: "Demo event for QR attendance scanning and staff attendance monitoring.",
       objectives: "Verify QR scanning, duplicate prevention, and manual attendance override.",
       date: today,
+      startDateTime: daysFromNowAt(0, 10),
+      endDateTime: daysFromNowAt(0, 17),
       time: "10:00 AM",
       location: "BayanihanHub Warehouse",
       status: "Closed",
@@ -178,6 +205,8 @@ async function seedMemoryDemoData() {
       description: "Finished coastal cleanup used for history, feedback, attendance, and report analytics testing.",
       objectives: "Clean shoreline waste and document volunteer attendance.",
       date: lastWeek,
+      startDateTime: daysFromNowAt(-7, 7),
+      endDateTime: daysFromNowAt(-7, 12),
       time: "7:00 AM",
       location: "Tanza Coastal Road",
       status: "Finished",
@@ -193,7 +222,23 @@ async function seedMemoryDemoData() {
         submittedAt: new Date()
       },
       actualBeneficiariesServed: 75,
-      outcomeSummary: "Collected trash bags and coordinated barangay disposal."
+      outcomeSummary: "Collected trash bags and coordinated barangay disposal.",
+      eventImages: [
+        ...commonEventFields.eventImages,
+        {
+          imageUrl: "https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=900&q=80",
+          imageType: "Post Event",
+          caption: "Cleanup documentation reference"
+        }
+      ],
+      progressUpdates: [
+        {
+          percentage: 100,
+          note: "Post-event report completed and attendance reconciled.",
+          updatedBy: staff._id,
+          updatedAt: new Date()
+        }
+      ]
     },
     {
       ...commonEventFields,
@@ -202,6 +247,8 @@ async function seedMemoryDemoData() {
       description: "Cancelled demo event showing cancellation status and disabled user actions.",
       objectives: "Show cancelled events in user filters and history.",
       date: daysFromNow(3),
+      startDateTime: daysFromNowAt(3, 13),
+      endDateTime: daysFromNowAt(3, 16),
       time: "1:00 PM",
       location: "Barangay Maligaya",
       status: "Cancelled",
@@ -216,9 +263,26 @@ async function seedMemoryDemoData() {
       description: "Pending admin approval demo record for the approval queue.",
       objectives: "Show admin approval and rejection workflow.",
       date: daysFromNow(12),
+      startDateTime: daysFromNowAt(12, 15),
+      endDateTime: daysFromNowAt(12, 17),
       time: "3:00 PM",
       location: "City Library Hall",
       status: "Pending Review"
+    },
+    {
+      ...commonEventFields,
+      createdBy: user._id,
+      title: "User Proposal: Weekend Reading Circle",
+      eventType: "Education",
+      description: "A user-submitted literacy activity for children and parents.",
+      objectives: "Collect volunteer readers and prepare donated books for a weekend learning session.",
+      date: daysFromNow(14),
+      startDateTime: daysFromNowAt(14, 9),
+      endDateTime: daysFromNowAt(14, 12),
+      time: "9:00 AM",
+      location: "Barangay San Isidro Daycare Center",
+      status: "Pending Review",
+      approvalRemarks: "Dummy user-created event proposal for approval testing."
     }
   ]);
 
@@ -233,12 +297,14 @@ async function seedMemoryDemoData() {
     { userId: sofia._id, eventId: fullEvent._id, participationStatus: "Joined", attendanceStatus: "Pending" }
   ]);
 
-  const [approvedFundraiser, pendingFundraiser] = await Fundraiser.create([
+  const [approvedFundraiser, pendingFundraiser, userFundraiserProposal] = await Fundraiser.create([
     {
       title: "Back-to-School Kit Fund",
       purpose: "Buy notebooks, pencils, and hygiene kits for public school learners.",
+      beneficiary: "Public school learners from Barangay San Isidro",
+      place: "Barangay San Isidro Elementary School",
       targetAmount: 25000,
-      raisedAmount: 7500,
+      raisedAmount: 4500,
       deadline: daysFromNow(21),
       relatedEvent: openEvent._id,
       description: "Fundraiser for the school supplies packing drive.",
@@ -246,17 +312,43 @@ async function seedMemoryDemoData() {
       createdBy: staff._id,
       approvedBy: admin._id,
       approvedAt: new Date(),
-      reconciliationStatus: "In Progress"
+      reconciliationStatus: "In Progress",
+      progressUpdates: [
+        {
+          amount: 4500,
+          previousRaised: 0,
+          newRaised: 4500,
+          percentage: 18,
+          note: "Two verified dummy donations added to the campaign history.",
+          updatedBy: admin._id,
+          updatedAt: new Date()
+        }
+      ]
     },
     {
       title: "Community Pantry Restock",
       purpose: "Restock rice, canned goods, and basic hygiene supplies.",
+      beneficiary: "Families visiting the BayanihanHub community pantry",
+      place: "BayanihanHub Community Pantry",
       targetAmount: 18000,
       raisedAmount: 0,
       deadline: daysFromNow(30),
       description: "Pending demo fundraiser for the admin approval queue.",
       status: "Pending",
       createdBy: staff._id
+    },
+    {
+      title: "User Proposal: Reading Nook Materials",
+      purpose: "Collect funds for mats, bookshelves, and starter books for the reading circle.",
+      beneficiary: "Children joining the Weekend Reading Circle",
+      place: "Barangay San Isidro Daycare Center",
+      targetAmount: 12000,
+      raisedAmount: 0,
+      deadline: daysFromNow(35),
+      description: "User-created fundraiser proposal connected to the reading circle event.",
+      relatedEvent: userProposalEvent._id,
+      status: "Pending",
+      createdBy: user._id
     }
   ]);
 
@@ -269,6 +361,7 @@ async function seedMemoryDemoData() {
       donationPurpose: "School supplies",
       paymentReference: "BH-DEMO-VERIFIED-001",
       proofOfPayment: "Demo receipt reference for verified donation.",
+      message: "Happy to help learners start the school year ready.",
       donorAnonymous: false,
       donationStatus: "Verified",
       receiptNumber: "BH-RCPT-0001",
@@ -278,6 +371,23 @@ async function seedMemoryDemoData() {
       donationDate: daysFromNow(-2)
     },
     {
+      donor: sofia._id,
+      fundraiserId: approvedFundraiser._id,
+      amount: 2000,
+      donationType: "Cash",
+      donationPurpose: "School supplies",
+      paymentReference: "BH-DEMO-VERIFIED-002",
+      proofOfPayment: "Cash receipt logged by admin.",
+      message: "For the kids and their first week of classes.",
+      donorAnonymous: false,
+      donationStatus: "Verified",
+      receiptNumber: "BH-RCPT-0002",
+      verifiedBy: admin._id,
+      verifiedAt: new Date(),
+      verificationNotes: "Seeded verified donation for fundraiser history.",
+      donationDate: daysFromNow(-1)
+    },
+    {
       donor: miguel._id,
       fundraiserId: pendingFundraiser._id,
       amount: 1000,
@@ -285,6 +395,7 @@ async function seedMemoryDemoData() {
       donationPurpose: "Pantry restock",
       paymentReference: "BH-DEMO-SUBMITTED-001",
       proofOfPayment: "Pending cash receipt note.",
+      message: "Please use this for pantry staples.",
       donorAnonymous: true,
       donationStatus: "Submitted",
       donationDate: daysFromNow(-1)
@@ -297,14 +408,26 @@ async function seedMemoryDemoData() {
       eventId: finishedEvent._id,
       rating: 5,
       comment: "Well organized and easy to check in.",
-      suggestions: "Add more gloves for cleanup volunteers."
+      suggestions: "Add more gloves for cleanup volunteers.",
+      reviewImages: [
+        {
+          imageUrl: "https://images.unsplash.com/photo-1618477462146-050d2767eac4?auto=format&fit=crop&w=900&q=80",
+          caption: "Volunteer cleanup review photo"
+        }
+      ]
     },
     {
       userId: miguel._id,
       eventId: finishedEvent._id,
       rating: 4,
       comment: "The team coordinated clearly.",
-      suggestions: "Start earlier next time."
+      suggestions: "Start earlier next time.",
+      reviewImages: [
+        {
+          imageUrl: "https://images.unsplash.com/photo-1618477388954-7852f32655ec?auto=format&fit=crop&w=900&q=80",
+          caption: "Team coordination review photo"
+        }
+      ]
     }
   ]);
 

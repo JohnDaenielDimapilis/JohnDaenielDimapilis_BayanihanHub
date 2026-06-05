@@ -177,13 +177,21 @@ export async function updateMyAccount(req, res, next) {
       return next(new Error("Account not found."));
     }
 
-    ["name", "phone", "address"].forEach((field) => {
+    ["name", "phone", "address", "showAchievementBadge"].forEach((field) => {
       if (req.body[field] !== undefined) user[field] = req.body[field];
     });
 
     await user.save();
     await logActivity(req, { action: "Updated own profile", module: "Account Self-Service", affectedRecord: user._id });
-    res.json({ id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone, address: user.address });
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      phone: user.phone,
+      address: user.address,
+      showAchievementBadge: user.showAchievementBadge
+    });
   } catch (error) {
     next(error);
   }

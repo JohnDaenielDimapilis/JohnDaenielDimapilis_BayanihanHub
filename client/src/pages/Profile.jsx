@@ -1,26 +1,32 @@
-import { Download, Save, Shield, Trash2, User } from "lucide-react";
+import { Award, Save, Shield, User } from "lucide-react";
 import { useEffect, useState } from "react";
-import { accountsApi } from "../api/client.js";
+import { accountsApi, achievementsApi } from "../api/client.js";
 import FormField from "../components/ui/FormField.jsx";
 import { useToast } from "../components/ui/Toast.jsx";
-import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Profile() {
-  const { logout } = useAuth();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState({ name: "", email: "", phone: "", address: "" });
+  const [profile, setProfile] = useState({ name: "", email: "", phone: "", address: "", showAchievementBadge: true });
+  const [achievement, setAchievement] = useState(null);
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "" });
 
   useEffect(() => {
-    accountsApi.me()
-      .then((data) => setProfile({
-        name: data.name || "",
-        email: data.email || "",
-        phone: data.phone || "",
-        address: data.address || ""
-      }))
+    Promise.all([
+      accountsApi.me(),
+      achievementsApi.getAll().catch(() => null)
+    ])
+      .then(([data, achievementData]) => {
+        setProfile({
+          name: data.name || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          address: data.address || "",
+          showAchievementBadge: data.showAchievementBadge !== false
+        });
+        setAchievement(Array.isArray(achievementData) ? achievementData[0] : achievementData);
+      })
       .catch((err) => toast.error(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -31,7 +37,12 @@ export default function Profile() {
     try {
       const data = await accountsApi.updateMe(profile);
       const savedUser = JSON.parse(localStorage.getItem("bayanihan_user") || "{}");
-      localStorage.setItem("bayanihan_user", JSON.stringify({ ...savedUser, name: data.name, email: data.email }));
+      localStorage.setItem("bayanihan_user", JSON.stringify({
+        ...savedUser,
+        name: data.name,
+        email: data.email,
+        showAchievementBadge: data.showAchievementBadge
+      }));
       toast.success("Profile updated");
     } catch (err) {
       toast.error(err.message);
@@ -54,37 +65,11 @@ export default function Profile() {
     }
   }
 
-  async function exportData() {
-    try {
-      const data = await accountsApi.exportMe();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "bayanihanhub-my-data.json";
-      link.click();
-      URL.revokeObjectURL(url);
-      toast.success("Data export downloaded");
-    } catch (err) {
-      toast.error(err.message);
-    }
-  }
-
-  async function deactivate() {
-    if (!window.confirm("Deactivate your account? You will be signed out immediately.")) return;
-    try {
-      await accountsApi.deactivateMe();
-      logout();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  }
-
   return (
     <section className="space-y-6 animate-fade-in">
       <div className="page-header">
         <h1>Profile</h1>
-        <p>Manage your account details, password, data export, and account status</p>
+        <p>Manage your account details, password, and achievement visibility</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -105,6 +90,16 @@ export default function Profile() {
           <FormField label="Address">
             <textarea className="input" value={profile.address} onChange={(e) => setProfile({ ...profile, address: e.target.value })} disabled={loading} />
           </FormField>
+          <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm text-surface-700">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={profile.showAchievementBadge}
+              onChange={(e) => setProfile({ ...profile, showAchievementBadge: e.target.checked })}
+              disabled={loading}
+            />
+            <span>Show my achievement badges on participant and fundraiser views.</span>
+          </label>
           <button className="btn-primary" disabled={saving || loading}>
             <Save size={16} />
             Save Profile
@@ -131,17 +126,18 @@ export default function Profile() {
           </form>
 
           <div className="card-padded space-y-4">
-            <h2 className="text-base font-semibold text-surface-900">Data and Account</h2>
-            <div className="flex flex-wrap gap-3">
-              <button className="btn-outline" onClick={exportData}>
-                <Download size={16} />
-                Export My Data
-              </button>
-              <button className="btn-danger" onClick={deactivate}>
-                <Trash2 size={16} />
-                Deactivate Account
-              </button>
+            <div className="flex items-center gap-2">
+              <Award size={18} className="text-surface-400" />
+              <h2 className="text-base font-semibold text-surface-900">Achievement Badge</h2>
             </div>
+            <div className="flex flex-wrap gap-2">
+              {(achievement?.badges?.length ? achievement.badges : ["No badges yet"]).map((badge) => (
+                <span key={badge} className="badge badge-info">{badge}</span>
+              ))}
+            </div>
+            <p className="text-sm text-surface-500">
+              {achievement?.points ? `${achievement.points} points earned from events, donations, and feedback.` : "Join events and support fundraisers to unlock badges."}
+            </p>
           </div>
         </div>
       </div>

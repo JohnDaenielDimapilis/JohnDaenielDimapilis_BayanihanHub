@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import Event from "../models/Event.js";
+import Feedback from "../models/Feedback.js";
 import Participant from "../models/Participant.js";
 import User from "../models/User.js";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../utils/eventWorkflow.js";
 import { createLog } from "./logController.js";
 import { createNotification, createNotifications } from "./notificationController.js";
+import { updateUserAchievement } from "./achievementController.js";
 
 const EVENT_FIELDS = [
   "title",
@@ -18,6 +20,9 @@ const EVENT_FIELDS = [
   "objectives",
   "date",
   "time",
+  "startDateTime",
+  "endDateTime",
+  "durationType",
   "location",
   "participantLimit",
   "targetBeneficiaries",
@@ -25,7 +30,8 @@ const EVENT_FIELDS = [
   "registrationStartDate",
   "registrationEndDate",
   "waitlistEnabled",
-  "capacityRule"
+  "capacityRule",
+  "eventImages"
 ];
 
 function eventTitle(event) {
@@ -33,8 +39,9 @@ function eventTitle(event) {
 }
 
 function isPastEventDate(event) {
-  if (!event.date) return false;
-  const eventDate = new Date(event.date);
+  const dateSource = event.endDateTime || event.date;
+  if (!dateSource) return false;
+  const eventDate = new Date(dateSource);
   if (Number.isNaN(eventDate.getTime())) return false;
   eventDate.setHours(23, 59, 59, 999);
   return eventDate < new Date();
@@ -59,12 +66,20 @@ async function enrichEvents(events) {
   const enriched = [];
   for (const event of events) {
     await refreshEventStatus(event);
-    const joinedCount = await Participant.countDocuments({ eventId: event._id, participationStatus: "Joined" });
-    const waitlistCount = await Participant.countDocuments({ eventId: event._id, participationStatus: "Waitlisted" });
+    const [joinedCount, waitlistCount, feedback] = await Promise.all([
+      Participant.countDocuments({ eventId: event._id, participationStatus: "Joined" }),
+      Participant.countDocuments({ eventId: event._id, participationStatus: "Waitlisted" }),
+      Feedback.find({ eventId: event._id })
+        .populate("userId", "name showAchievementBadge")
+        .sort({ createdAt: -1 })
+    ]);
+    const feedbackReviews = feedback.map((item) => item.toObject());
     enriched.push({
       ...event.toObject(),
       joinedCount,
       waitlistCount,
+      feedbackReviews,
+      reviewImages: feedbackReviews.flatMap((item) => item.reviewImages || []),
       capacityDisplay: `${joinedCount}/${event.participantLimit || 0}`,
       userDisplayStatus: event.status === "Finished" ? "Finished" : event.status
     });
@@ -75,9 +90,33 @@ async function enrichEvents(events) {
 function applyEventFields(event, body) {
   EVENT_FIELDS.forEach((field) => {
     if (body[field] !== undefined) {
-      event[field === "type" ? "eventType" : field] = body[field];
+      if (field === "eventImages") {
+        event.eventImages = normalizeEventImages(body.eventImages, body.uploadedBy);
+      } else {
+        event[field === "type" ? "eventType" : field] = body[field];
+      }
     }
   });
+  if (event.startDateTime) {
+    const start = new Date(event.startDateTime);
+    if (!Number.isNaN(start.getTime())) {
+      event.date = start;
+      event.time = event.time || start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    }
+  }
+}
+
+function normalizeEventImages(images = [], uploadedBy) {
+  if (!Array.isArray(images)) return [];
+  return images
+    .filter((image) => image?.imageUrl)
+    .map((image) => ({
+      imageUrl: String(image.imageUrl).trim(),
+      imageType: image.imageType || "Documentation",
+      caption: image.caption || "",
+      uploadedBy: image.uploadedBy || uploadedBy,
+      uploadedAt: image.uploadedAt || new Date()
+    }));
 }
 
 function getSubmissionError(event) {
@@ -93,7 +132,8 @@ function getSubmissionError(event) {
 }
 
 function isOwnStaffEvent(req, event) {
-  return req.user.role !== "Staff" || event.createdBy?.toString() === req.user._id.toString();
+  if (req.user.role === "Admin") return true;
+  return event.createdBy?.toString() === req.user._id.toString();
 }
 
 function ensureStaffOwnsEvent(req, event, res) {
@@ -161,6 +201,7 @@ export async function createEvent(req, res) {
       createdBy: req.user._id,
       status: req.body.submitForReview ? "Pending Review" : "Draft"
     });
+    req.body.uploadedBy = req.user._id;
     applyEventFields(event, req.body);
 
     if (req.body.submitForReview) {
@@ -208,7 +249,14 @@ export async function publicEvents(req, res) {
 
 export async function getEvents(req, res) {
   try {
-    const filter = req.user.role === "User" ? { status: { $in: USER_VISIBLE_EVENT_STATUSES } } : {};
+    const filter = req.user.role === "User"
+      ? {
+          $or: [
+            { status: { $in: USER_VISIBLE_EVENT_STATUSES } },
+            { createdBy: req.user._id }
+          ]
+        }
+      : {};
 
     const events = await Event.find(filter)
       .populate("createdBy", "name email role")
@@ -227,7 +275,10 @@ export async function getEventById(req, res) {
     const filter = { _id: req.params.id };
 
     if (req.user.role === "User") {
-      filter.status = { $in: USER_VISIBLE_EVENT_STATUSES };
+      filter.$or = [
+        { status: { $in: USER_VISIBLE_EVENT_STATUSES } },
+        { createdBy: req.user._id }
+      ];
     }
 
     const event = await Event.findOne(filter)
@@ -262,6 +313,7 @@ export async function updateEvent(req, res) {
     }
 
     const oldStatus = event.status;
+    req.body.uploadedBy = req.user._id;
     applyEventFields(event, req.body);
 
     if (req.body.submitForReview) {
@@ -292,6 +344,48 @@ export async function updateEvent(req, res) {
     });
   } catch (error) {
     res.status(500).json({ message: "Event update failed.", error: error.message });
+  }
+}
+
+export async function updateEventProgress(req, res) {
+  try {
+    const event = await Event.findById(req.params.id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found." });
+    }
+
+    if (!ensureStaffOwnsEvent(req, event, res)) return;
+
+    const percentage = Math.max(0, Math.min(100, Number(req.body.percentage)));
+    if (Number.isNaN(percentage)) {
+      return res.status(400).json({ message: "A valid progress percentage is required." });
+    }
+
+    const oldStatus = event.status;
+    event.progressPercentage = percentage;
+    event.progressUpdates.push({
+      percentage,
+      note: req.body.note || "",
+      updatedBy: req.user._id,
+      updatedAt: new Date()
+    });
+    await event.save();
+
+    await logEventChange(req, event, "Event Progress Updated", oldStatus, {
+      note: req.body.note || "",
+      newValue: { progressPercentage: event.progressPercentage }
+    });
+
+    await notifyCreator(
+      event,
+      "Event progress updated",
+      `"${eventTitle(event)}" is now ${event.progressPercentage}% complete.`
+    );
+
+    res.status(200).json({ message: "Event progress updated.", event });
+  } catch (error) {
+    res.status(500).json({ message: "Event progress update failed.", error: error.message });
   }
 }
 
@@ -326,6 +420,7 @@ export async function submitEvent(req, res) {
       return res.status(400).json({ message: `Cannot submit an event from ${event.status} status.` });
     }
 
+    req.body.uploadedBy = req.user._id;
     applyEventFields(event, req.body);
     const error = getSubmissionError(event);
     if (error) return res.status(400).json({ message: error });
@@ -665,6 +760,7 @@ export async function getEventHistory(req, res) {
       const participants = await Participant.find({ userId: req.user._id })
         .populate({
           path: "eventId",
+          select: "title date startDateTime endDateTime durationType location status createdBy eventImages postEventReport",
           populate: { path: "createdBy", select: "name email role" }
         })
         .sort({ joinedAt: -1 });
@@ -782,6 +878,7 @@ export async function scanEventQr(req, res) {
     participant.checkInCode = token;
     participant.checkInMethod = "QR";
     await participant.save();
+    await updateUserAchievement(req.user._id);
 
     await createLog({
       userId: req.user._id,

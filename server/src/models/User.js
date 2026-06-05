@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema(
     bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     phone: { type: String, trim: true },
     address: { type: String, trim: true },
+    showAchievementBadge: { type: Boolean, default: true },
     privacyConsentAt: { type: Date },
     consentVersion: { type: String, default: "2026.06" }
   },

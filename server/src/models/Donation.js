@@ -9,6 +9,7 @@ const donationSchema = new mongoose.Schema(
     donationPurpose: { type: String, required: true, trim: true },
     paymentReference: { type: String, required: true, trim: true },
     proofOfPayment: { type: String, trim: true },
+    message: { type: String, trim: true },
     donorAnonymous: { type: Boolean, default: false },
     donationStatus: {
       type: String,

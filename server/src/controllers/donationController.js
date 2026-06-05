@@ -1,6 +1,8 @@
 import Donation from "../models/Donation.js";
 import Fundraiser from "../models/Fundraiser.js";
+import { updateUserAchievement } from "./achievementController.js";
 import { createLog } from "./logController.js";
+import { createNotification } from "./notificationController.js";
 
 function makeReceiptNumber(donation) {
   const year = new Date().getFullYear();
@@ -17,6 +19,7 @@ export async function createDonation(req, res) {
       donationPurpose,
       paymentReference,
       proofOfPayment,
+      message,
       donorAnonymous = false
     } = req.body;
 
@@ -47,6 +50,7 @@ export async function createDonation(req, res) {
       donationPurpose,
       paymentReference,
       proofOfPayment,
+      message,
       donorAnonymous,
       donationStatus: "Submitted",
       donationDate: new Date()
@@ -68,6 +72,21 @@ export async function createDonation(req, res) {
       }
     });
 
+    await createNotification({
+      userId: fundraiser.createdBy,
+      title: "Donation submitted",
+      message: `${req.user.name} submitted PHP ${Number(donation.amount).toLocaleString()} for "${fundraiser.title}".`,
+      type: "Donation",
+      relatedRecordId: donation._id
+    });
+    await createNotification({
+      userId: req.user._id,
+      title: "Donation submitted",
+      message: `Your donation to "${fundraiser.title}" is waiting for verification.`,
+      type: "Donation",
+      relatedRecordId: donation._id
+    });
+
     res.status(201).json({
       message: "Donation submitted for verification.",
       donation
@@ -84,18 +103,29 @@ export async function getDonations(req, res) {
   try {
     let filter = {};
 
-    if (req.user.role === "User") {
+    if (req.query.fundraiserId) {
+      const fundraiser = await Fundraiser.findById(req.query.fundraiserId).select("status createdBy");
+      if (!fundraiser) return res.status(404).json({ message: "Fundraiser not found." });
+      if (
+        req.user.role === "User" &&
+        !["Approved", "Closed"].includes(fundraiser.status) &&
+        fundraiser.createdBy.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({ message: "You cannot view this fundraiser donation history." });
+      }
+      filter.fundraiserId = req.query.fundraiserId;
+    } else if (req.user.role === "User") {
       filter.donor = req.user._id;
     }
 
-    if (req.user.role === "Staff") {
+    if (req.user.role === "Staff" && !req.query.fundraiserId) {
       const staffFundraisers = await Fundraiser.find({ createdBy: req.user._id }).select("_id");
       filter.fundraiserId = { $in: staffFundraisers.map((fundraiser) => fundraiser._id) };
     }
 
     const donations = await Donation.find(filter)
-      .populate("donor", "name email role")
-      .populate("fundraiserId", "title purpose targetAmount status createdBy utilizationReport reconciliationStatus")
+      .populate("donor", "name email role showAchievementBadge")
+      .populate("fundraiserId", "title purpose beneficiary place targetAmount raisedAmount progressPercentage status createdBy utilizationReport reconciliationStatus")
       .sort({ donationDate: -1 });
 
     res.status(200).json(donations);
@@ -128,11 +158,23 @@ export async function verifyDonation(req, res) {
     await donation.save();
 
     const fundraiser = donation.fundraiserId;
+    const previousRaised = Number(fundraiser.raisedAmount || 0);
     fundraiser.raisedAmount = Number(fundraiser.raisedAmount || 0) + Number(donation.amount || 0);
+    fundraiser.progressUpdates.push({
+      donationId: donation._id,
+      amount: donation.amount,
+      previousRaised,
+      newRaised: fundraiser.raisedAmount,
+      percentage: fundraiser.targetAmount > 0 ? Math.min(100, Math.round((fundraiser.raisedAmount / fundraiser.targetAmount) * 100)) : 0,
+      note: donation.message || donation.verificationNotes || "Donation verified.",
+      updatedBy: req.user._id,
+      updatedAt: new Date()
+    });
     if (fundraiser.raisedAmount >= fundraiser.targetAmount && fundraiser.status === "Approved") {
       fundraiser.reconciliationStatus = fundraiser.reconciliationStatus || "In Progress";
     }
     await fundraiser.save();
+    await updateUserAchievement(donation.donor);
 
     await createLog({
       userId: req.user._id,
@@ -153,6 +195,21 @@ export async function verifyDonation(req, res) {
         ipAddress: req.ip,
         userAgent: req.get("user-agent")
       }
+    });
+
+    await createNotification({
+      userId: donation.donor,
+      title: "Donation verified",
+      message: `Your PHP ${Number(donation.amount).toLocaleString()} donation to "${fundraiser.title}" was verified.`,
+      type: "Donation",
+      relatedRecordId: donation._id
+    });
+    await createNotification({
+      userId: fundraiser.createdBy,
+      title: "Fundraiser progress updated",
+      message: `"${fundraiser.title}" is now PHP ${Number(fundraiser.raisedAmount).toLocaleString()} of PHP ${Number(fundraiser.targetAmount).toLocaleString()}.`,
+      type: "Donation",
+      relatedRecordId: fundraiser._id
     });
 
     res.status(200).json({ message: "Donation verified and receipt recorded.", donation });
@@ -184,6 +241,7 @@ export async function rejectDonation(req, res) {
     donation.rejectedAt = new Date();
     donation.rejectionReason = req.body.rejectionReason;
     await donation.save();
+    await updateUserAchievement(donation.donor);
 
     await createLog({
       userId: req.user._id,
@@ -200,6 +258,14 @@ export async function rejectDonation(req, res) {
         ipAddress: req.ip,
         userAgent: req.get("user-agent")
       }
+    });
+
+    await createNotification({
+      userId: donation.donor,
+      title: "Donation rejected",
+      message: `Your donation was rejected: ${donation.rejectionReason}`,
+      type: "Donation",
+      relatedRecordId: donation._id
     });
 
     res.status(200).json({ message: "Donation rejected.", donation });
@@ -231,6 +297,7 @@ export async function refundDonation(req, res) {
     donation.refundedAt = new Date();
     donation.refundReason = req.body.refundReason;
     await donation.save();
+    await updateUserAchievement(donation.donor);
 
     await createLog({
       userId: req.user._id,
@@ -247,6 +314,14 @@ export async function refundDonation(req, res) {
         ipAddress: req.ip,
         userAgent: req.get("user-agent")
       }
+    });
+
+    await createNotification({
+      userId: donation.donor,
+      title: "Donation refunded",
+      message: `Your donation was marked as refunded: ${donation.refundReason}`,
+      type: "Donation",
+      relatedRecordId: donation._id
     });
 
     res.status(200).json({ message: "Donation marked as refunded.", donation });

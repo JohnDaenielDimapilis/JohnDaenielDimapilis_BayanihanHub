@@ -1,12 +1,12 @@
 import {
-  Bell, CalendarDays, ChartNoAxesCombined, ChevronLeft, ClipboardList,
+  Award, Bell, CalendarDays, ChartNoAxesCombined, ChevronLeft, ClipboardList,
   Gift, HandCoins, History, Inbox, LayoutDashboard, LogOut, Menu, MessageSquare, Search,
   UserCog, Users, X
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { notificationsApi } from "../api/client.js";
-import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
+import bayanihanLogo from "../assets/bayanihanhub-logo.png";
 import { useAuth } from "../context/AuthContext.jsx";
 import Avatar from "./ui/Avatar.jsx";
 import CommandPalette from "./CommandPalette.jsx";
@@ -22,10 +22,10 @@ const navSections = [
     label: "Management",
     links: [
       { to: "/events", label: "Events", icon: CalendarDays },
-      { to: "/history", label: "History", icon: History },
-      { to: "/donations", label: "Donations", icon: HandCoins, roles: ["Admin", "Staff"] },
-      { to: "/my-donations", label: "Donations", icon: HandCoins, roles: ["User"] },
       { to: "/fundraisers", label: "Fundraisers", icon: Gift, roles: ["Admin", "Staff", "User"] },
+      { to: "/donations", label: "Donations", icon: HandCoins, roles: ["Admin", "Staff", "User"] },
+      { to: "/history", label: "History", icon: History },
+      { to: "/achievements", label: "Achievements", icon: Award, roles: ["Admin", "User"] },
       { to: "/participants", label: "Participants", icon: Users, roles: ["Admin", "Staff"] },
       { to: "/feedback", label: "Feedback Analytics", icon: MessageSquare, roles: ["Admin", "Staff"] },
     ],
@@ -49,6 +49,7 @@ const pageTitles = {
   "/fundraisers": "Fundraisers",
   "/donations": "Donations",
   "/my-donations": "My Donations",
+  "/achievements": "Achievements",
   "/participants": "Participants",
   "/feedback": "Feedback",
   "/approval-requests": "Approval Requests",
@@ -102,7 +103,7 @@ export default function Layout() {
         `}
       >
         <div className={`flex items-center gap-3 px-5 h-16 border-b border-white/[0.08] shrink-0 ${collapsed ? "lg:justify-center lg:px-0" : ""}`}>
-          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-9 h-9 rounded-lg shrink-0" />
+          <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-10 h-10 rounded-lg bg-white object-contain shrink-0" />
           <div className={`overflow-hidden transition-all ${collapsed ? "lg:w-0 lg:opacity-0" : "w-auto opacity-100"}`}>
             <h1 className="text-white font-bold text-base leading-tight whitespace-nowrap">BayanihanHub</h1>
             <p className="text-surface-400 text-2xs leading-tight whitespace-nowrap">Foundation Management</p>

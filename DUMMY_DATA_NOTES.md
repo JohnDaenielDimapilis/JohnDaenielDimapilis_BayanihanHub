@@ -16,11 +16,13 @@ If `server/.env` does not provide a working `MONGO_URI`, BayanihanHub starts an 
 - User, Staff, Admin, and temporarily banned accounts
 - User-visible events in Open, Full, Closed, Finished, and Cancelled states
 - One Pending Review event for Approval Requests
+- User-submitted Pending Review event and fundraiser proposals for the normal User account
+- Event duration fields (`startDateTime`, `endDateTime`, `durationType`) and sample official event picture URLs
 - Active, cancelled, waitlisted, completed, present, absent, and pending participant records
 - A QR attendance test event named `Today Relief Packing QR Test`
-- Approved and pending fundraisers
-- Verified and submitted donations
-- Feedback analytics data
+- Approved and pending fundraisers with beneficiary/place fields and seeded fundraiser progress updates
+- Verified and submitted donations with donor messages
+- Feedback analytics data with sample review picture URLs
 - User notifications, achievements, and activity logs
 
 ## QR Attendance Test

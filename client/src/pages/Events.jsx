@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   Edit3,
   FileText,
+  ImageIcon,
   MapPin,
   Plus,
   QrCode,
@@ -16,7 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { eventsApi, participantsApi } from "../api/client.js";
-import bayanihanLogo from "../assets/bayanihanhub-logo.svg";
+import bayanihanLogo from "../assets/bayanihanhub-logo.png";
 import DataTable from "../components/DataTable.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import Modal from "../components/ui/Modal.jsx";
@@ -31,12 +32,19 @@ const blank = {
   objectives: "",
   date: "",
   time: "",
+  startDateTime: "",
+  endDateTime: "",
+  durationType: "One Day",
   location: "",
   participantLimit: 50,
   targetBeneficiaries: "",
   requiredResources: "",
   registrationStartDate: "",
   registrationEndDate: "",
+  bannerImageUrl: "",
+  informationImageUrl: "",
+  documentationImageUrl: "",
+  postEventImageUrl: "",
   waitlistEnabled: true,
   capacityRule: "Allow Waitlist"
 };
@@ -53,6 +61,36 @@ const blankReport = {
 function toDateInput(value) {
   if (!value) return "";
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function toDateTimeInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function formatEventDuration(event) {
+  const start = event.startDateTime ? new Date(event.startDateTime) : event.date ? new Date(event.date) : null;
+  const end = event.endDateTime ? new Date(event.endDateTime) : null;
+  if (!start || Number.isNaN(start.getTime())) return "TBA";
+  const startText = start.toLocaleString();
+  const endText = end && !Number.isNaN(end.getTime()) ? end.toLocaleString() : "";
+  return endText ? `${event.durationType || "One Day"} - ${startText} to ${endText}` : `${event.durationType || "One Day"} - ${startText}`;
+}
+
+function imageUrlFor(event, imageType) {
+  return event.eventImages?.find((image) => image.imageType === imageType)?.imageUrl || "";
+}
+
+function buildEventImages(form) {
+  return [
+    { imageType: "Banner", imageUrl: form.bannerImageUrl, caption: "Event banner" },
+    { imageType: "Information", imageUrl: form.informationImageUrl, caption: "Information poster" },
+    { imageType: "Documentation", imageUrl: form.documentationImageUrl, caption: "Documentation photo" },
+    { imageType: "Post Event", imageUrl: form.postEventImageUrl, caption: "Post-event photo" }
+  ].filter((image) => image.imageUrl?.trim());
 }
 
 function ProgressCell({ value = 0 }) {
@@ -84,9 +122,13 @@ export default function Events() {
   const [reportEvent, setReportEvent] = useState(null);
   const [reportForm, setReportForm] = useState(blankReport);
   const [detailsEvent, setDetailsEvent] = useState(null);
-  const [dateFilter, setDateFilter] = useState({ type: "all", value: "" });
+  const [dateFilter, setDateFilter] = useState({ type: "all", value: "", startDate: "", endDate: "" });
   const [locationFilter, setLocationFilter] = useState("");
-  const [progressFilter, setProgressFilter] = useState("all");
+  const [eventStatusFilter, setEventStatusFilter] = useState("all");
+  const [registrationStatusFilter, setRegistrationStatusFilter] = useState("all");
+  const [userView, setUserView] = useState("join");
+  const [progressEvent, setProgressEvent] = useState(null);
+  const [progressForm, setProgressForm] = useState({ percentage: "", note: "" });
   const [qrPanel, setQrPanel] = useState(null);
 
   async function load() {
@@ -128,12 +170,19 @@ export default function Events() {
       objectives: event.objectives || "",
       date: toDateInput(event.date),
       time: event.time || "",
+      startDateTime: toDateTimeInput(event.startDateTime || event.date),
+      endDateTime: toDateTimeInput(event.endDateTime || event.date),
+      durationType: event.durationType || "One Day",
       location: event.location || "",
       participantLimit: event.participantLimit || 50,
       targetBeneficiaries: event.targetBeneficiaries || "",
       requiredResources: event.requiredResources || "",
       registrationStartDate: toDateInput(event.registrationStartDate),
       registrationEndDate: toDateInput(event.registrationEndDate),
+      bannerImageUrl: imageUrlFor(event, "Banner"),
+      informationImageUrl: imageUrlFor(event, "Information"),
+      documentationImageUrl: imageUrlFor(event, "Documentation"),
+      postEventImageUrl: imageUrlFor(event, "Post Event"),
       waitlistEnabled: event.waitlistEnabled !== false,
       capacityRule: event.capacityRule || "Allow Waitlist"
     });
@@ -142,7 +191,15 @@ export default function Events() {
 
   async function saveEvent(mode) {
     setSubmitting(true);
-    const payload = { ...form, participantLimit: Number(form.participantLimit || 0), submitForReview: mode === "submit" };
+    const start = form.startDateTime ? new Date(form.startDateTime) : null;
+    const payload = {
+      ...form,
+      date: form.startDateTime || form.date,
+      time: form.time || (start && !Number.isNaN(start.getTime()) ? start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""),
+      participantLimit: Number(form.participantLimit || 0),
+      eventImages: buildEventImages(form),
+      submitForReview: mode === "submit"
+    };
     try {
       if (editingEvent) {
         await eventsApi.update(editingEvent._id, payload);
@@ -198,6 +255,26 @@ export default function Events() {
       load();
     } catch (err) {
       toast.error(err.message);
+    }
+  }
+
+  async function submitProgress(e) {
+    e.preventDefault();
+    if (!progressEvent) return;
+    setSubmitting(true);
+    try {
+      await eventsApi.updateProgress(progressEvent._id, {
+        percentage: Number(progressForm.percentage),
+        note: progressForm.note
+      });
+      toast.success("Progress updated");
+      setProgressEvent(null);
+      setProgressForm({ percentage: "", note: "" });
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -276,7 +353,7 @@ export default function Events() {
               </button>
             )}
             {row.status === "Finished" && registration.attendanceStatus === "Present" && (
-              <button className="btn-outline btn-xs" onClick={() => navigate("/feedback")}>
+              <button className="btn-outline btn-xs" onClick={() => navigate("/history")}>
                 <FileText size={13} />
                 Feedback
               </button>
@@ -292,9 +369,7 @@ export default function Events() {
       if (row.status === "Open for Registration") {
         return <button className="btn-primary btn-xs" onClick={() => join(row)}>Join</button>;
       }
-      if (row.status === "Full") {
-        return <button className="btn-outline btn-xs" onClick={() => join(row)}>Waitlist</button>;
-      }
+      if (row.status === "Full") return <button className="btn-outline btn-xs" disabled>Full</button>;
       return null;
     }
 
@@ -336,6 +411,11 @@ export default function Events() {
             <button className="btn-danger btn-xs" onClick={() => runAction("cancel", row)}>Cancel</button>
           </>
         )}
+        {isManager && !["Archived", "Cancelled", "Rejected"].includes(row.status) && (
+          <button className="btn-outline btn-xs" onClick={() => { setProgressEvent(row); setProgressForm({ percentage: row.progressPercentage || 0, note: "" }); }}>
+            Progress
+          </button>
+        )}
         {["Open for Registration", "Full", "Closed", "Finished"].includes(row.status) && isManager && (
           <button className="btn-outline btn-xs" onClick={() => runAction("qr", row)}>
             <QrCode size={13} />
@@ -359,20 +439,43 @@ export default function Events() {
   }
 
   function matchesDateFilter(event) {
-    if (dateFilter.type === "all" || !dateFilter.value || !event.date) return true;
-    const eventDate = new Date(event.date);
-    const selected = dateFilter.type === "year" ? new Date(Number(dateFilter.value), 0, 1) : new Date(dateFilter.value);
-    if (Number.isNaN(eventDate.getTime()) || Number.isNaN(selected.getTime())) return true;
-    if (dateFilter.type === "day") return eventDate.toDateString() === selected.toDateString();
-    if (dateFilter.type === "month") return eventDate.getFullYear() === selected.getFullYear() && eventDate.getMonth() === selected.getMonth();
-    if (dateFilter.type === "year") return eventDate.getFullYear() === selected.getFullYear();
+    if (dateFilter.type === "all") return true;
+    const eventDate = new Date(event.startDateTime || event.date);
+    if (Number.isNaN(eventDate.getTime())) return true;
+    const now = new Date();
+    if (dateFilter.type === "day") return eventDate.toDateString() === now.toDateString();
+    if (dateFilter.type === "week") {
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      return eventDate >= weekStart && eventDate <= weekEnd;
+    }
+    if (dateFilter.type === "month") return eventDate.getFullYear() === now.getFullYear() && eventDate.getMonth() === now.getMonth();
+    if (dateFilter.type === "custom") {
+      if (dateFilter.startDate && eventDate < new Date(dateFilter.startDate)) return false;
+      if (dateFilter.endDate) {
+        const end = new Date(dateFilter.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (eventDate > end) return false;
+      }
+    }
     return true;
   }
 
   const userEvents = events.filter((event) => {
     const locationMatch = !locationFilter.trim() || String(event.location || "").toLowerCase().includes(locationFilter.toLowerCase());
-    const progressMatch = progressFilter === "all" || Number(event.progressPercentage || 0) === Number(progressFilter);
-    return matchesDateFilter(event) && locationMatch && progressMatch;
+    const statusMap = { open: "Open for Registration", waitlist: "Full" };
+    const eventStatus = statusMap[eventStatusFilter] || eventStatusFilter;
+    const eventStatusMatch = eventStatusFilter === "all" || event.status === eventStatus;
+    const registration = registrationByEvent[event._id];
+    const registrationLabel = registration?.participationStatus || "Not Joined";
+    const registrationMatch = registrationStatusFilter === "all" || registrationLabel === registrationStatusFilter;
+    const ownedByUser = (event.createdBy?._id || event.createdBy) === user.id;
+    const viewMatch = userView === "join" ? !ownedByUser : ownedByUser;
+    return matchesDateFilter(event) && locationMatch && eventStatusMatch && registrationMatch && viewMatch;
   });
 
   function mainRegistrationButton(event) {
@@ -387,9 +490,7 @@ export default function Events() {
     if (event.status === "Open for Registration") {
       return <button className="btn-primary w-full justify-center" onClick={() => join(event)}>Join Event</button>;
     }
-    if (event.status === "Full") {
-      return <button className="btn-outline w-full justify-center" onClick={() => join(event)}>Join Waitlist</button>;
-    }
+    if (event.status === "Full") return <button className="btn-outline w-full justify-center" disabled>Event Full</button>;
     if (event.status === "Closed") return <button className="btn-outline w-full justify-center" disabled>Registration Closed</button>;
     if (event.status === "Finished") return <button className="btn-primary w-full justify-center" onClick={() => setDetailsEvent(event)}>View History / Give Feedback</button>;
     if (event.status === "Cancelled") return <button className="btn-danger w-full justify-center" disabled>Cancelled</button>;
@@ -419,8 +520,8 @@ export default function Events() {
       accessor: (row) => row.date,
       render: (row) => (
         <div>
-          <p className="text-sm text-surface-700">{row.date ? new Date(row.date).toLocaleDateString() : "Not set"}</p>
-          {row.time && <p className="text-xs text-surface-400">{row.time}</p>}
+          <p className="text-sm text-surface-700">{row.startDateTime ? new Date(row.startDateTime).toLocaleDateString() : row.date ? new Date(row.date).toLocaleDateString() : "Not set"}</p>
+          <p className="text-xs text-surface-400">{row.durationType || "One Day"}</p>
         </div>
       ),
     },
@@ -494,51 +595,82 @@ export default function Events() {
           <h1>Events</h1>
           <p>Manage event review, registration, attendance, finish reports, and archive status</p>
         </div>
-        {user.role !== "User" && (
-          <button className="btn-primary" onClick={openCreate}>
-            <Plus size={16} />
-            New Event
-          </button>
-        )}
+        <button className="btn-primary" onClick={openCreate}>
+          <Plus size={16} />
+          {user.role === "User" ? "Create Event" : "New Event"}
+        </button>
       </div>
 
       {user.role === "User" ? (
         <>
-          <div className="card-padded grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="flex gap-2 flex-wrap">
+            <button className={`btn-sm ${userView === "join" ? "btn-primary" : "btn-ghost"}`} onClick={() => setUserView("join")}>
+              Join Events
+            </button>
+            <button className={`btn-sm ${userView === "create" ? "btn-primary" : "btn-ghost"}`} onClick={() => setUserView("create")}>
+              Create Events
+            </button>
+          </div>
+
+          <div className="card-padded grid grid-cols-1 md:grid-cols-5 gap-3">
             <FormField label="Date Filter">
               <div className="flex gap-2">
                 <select className="input h-10" value={dateFilter.type} onChange={(e) => setDateFilter({ ...dateFilter, type: e.target.value })}>
                   <option value="all">All</option>
                   <option value="day">Day</option>
+                  <option value="week">Week</option>
                   <option value="month">Month</option>
-                  <option value="year">Year</option>
+                  <option value="custom">Custom</option>
                 </select>
-                {dateFilter.type !== "all" && (
+                {dateFilter.type === "custom" && (
                   <input
-                    type={dateFilter.type === "year" ? "number" : dateFilter.type}
+                    type="date"
                     className="input h-10"
-                    value={dateFilter.value}
-                    min={dateFilter.type === "year" ? "2020" : undefined}
-                    onChange={(e) => setDateFilter({ ...dateFilter, value: e.target.value })}
+                    value={dateFilter.startDate}
+                    onChange={(e) => setDateFilter({ ...dateFilter, startDate: e.target.value })}
                   />
                 )}
               </div>
             </FormField>
+            {dateFilter.type === "custom" && (
+              <FormField label="End Date">
+                <input
+                  type="date"
+                  className="input h-10"
+                  value={dateFilter.endDate}
+                  onChange={(e) => setDateFilter({ ...dateFilter, endDate: e.target.value })}
+                />
+              </FormField>
+            )}
             <FormField label="Location">
               <input className="input h-10" placeholder="Search location..." value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} />
             </FormField>
-            <FormField label="Progress">
-              <select className="input h-10" value={progressFilter} onChange={(e) => setProgressFilter(e.target.value)}>
-                <option value="all">All progress</option>
-                <option value="55">55% Open</option>
-                <option value="65">65% Full</option>
-                <option value="75">75% Closed</option>
-                <option value="90">90% Finished</option>
-                <option value="0">0% Cancelled</option>
+            <FormField label="Event Status">
+              <select className="input h-10" value={eventStatusFilter} onChange={(e) => setEventStatusFilter(e.target.value)}>
+                <option value="all">All</option>
+                <option value="open">Open</option>
+                <option value="Closed">Closed</option>
+                <option value="Cancelled">Cancelled</option>
+                <option value="waitlist">Waitlist</option>
+                <option value="Finished">Finished</option>
+              </select>
+            </FormField>
+            <FormField label="Registration">
+              <select className="input h-10" value={registrationStatusFilter} onChange={(e) => setRegistrationStatusFilter(e.target.value)}>
+                <option value="all">All</option>
+                <option value="Joined">Joined</option>
+                <option value="Not Joined">Not Joined</option>
+                <option value="Waitlisted">Waitlisted</option>
+                <option value="Cancelled">Cancelled</option>
               </select>
             </FormField>
             <div className="flex items-end">
-              <button className="btn-outline w-full" onClick={() => { setDateFilter({ type: "all", value: "" }); setLocationFilter(""); setProgressFilter("all"); }}>
+              <button className="btn-outline w-full" onClick={() => {
+                setDateFilter({ type: "all", value: "", startDate: "", endDate: "" });
+                setLocationFilter("");
+                setEventStatusFilter("all");
+                setRegistrationStatusFilter("all");
+              }}>
                 Reset Filters
               </button>
             </div>
@@ -552,10 +684,12 @@ export default function Events() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {userEvents.map((event) => {
                 const registration = registrationByEvent[event._id];
+                const isOwned = (event.createdBy?._id || event.createdBy) === user.id;
+                const bannerUrl = imageUrlFor(event, "Banner") || bayanihanLogo;
                 return (
                   <article key={event._id} className="card-padded flex flex-col gap-4">
                     <div className="flex items-start gap-3">
-                      <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-12 h-12 rounded-lg shrink-0" />
+                      <img src={bannerUrl} alt="Event banner" className="w-12 h-12 rounded-lg bg-white object-cover shrink-0" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <h2 className="text-base font-semibold text-surface-900 truncate">{event.title || "Untitled event"}</h2>
@@ -570,11 +704,11 @@ export default function Events() {
                     <div className="grid grid-cols-2 gap-3 text-sm text-surface-600">
                       <div>
                         <p className="text-2xs uppercase font-semibold text-surface-400">Date</p>
-                        <p>{event.date ? new Date(event.date).toLocaleDateString() : "TBA"}</p>
+                        <p>{event.startDateTime ? new Date(event.startDateTime).toLocaleDateString() : event.date ? new Date(event.date).toLocaleDateString() : "TBA"}</p>
                       </div>
                       <div>
-                        <p className="text-2xs uppercase font-semibold text-surface-400">Time</p>
-                        <p>{event.time || "TBA"}</p>
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Duration</p>
+                        <p>{event.durationType || "One Day"}</p>
                       </div>
                       <div>
                         <p className="text-2xs uppercase font-semibold text-surface-400">Location</p>
@@ -592,7 +726,19 @@ export default function Events() {
                     </div>
 
                     <div className="mt-auto">
-                      {mainRegistrationButton(event)}
+                      {isOwned ? (
+                        <div className="flex flex-wrap gap-2">
+                          {["Draft", "Pending Review", "Rejected", "Approved"].includes(event.status) && (
+                            <button className="btn-outline flex-1 justify-center" onClick={() => openEdit(event)}>Edit</button>
+                          )}
+                          {["Draft", "Rejected"].includes(event.status) && (
+                            <button className="btn-primary flex-1 justify-center" onClick={() => runAction("submit", event)}>Submit</button>
+                          )}
+                          {!["Archived", "Cancelled", "Rejected"].includes(event.status) && (
+                            <button className="btn-outline flex-1 justify-center" onClick={() => { setProgressEvent(event); setProgressForm({ percentage: event.progressPercentage || 0, note: "" }); }}>Progress</button>
+                          )}
+                        </div>
+                      ) : mainRegistrationButton(event)}
                     </div>
                   </article>
                 );
@@ -626,11 +772,21 @@ export default function Events() {
             <FormField label="Event Type" required>
               <input className="input" placeholder="Workshop, outreach, clinic" value={form.eventType} onChange={(e) => setForm({ ...form, eventType: e.target.value })} />
             </FormField>
-            <FormField label="Date" required>
-              <input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <FormField label="Start Date & Time" required>
+              <input type="datetime-local" className="input" value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value, date: e.target.value })} />
             </FormField>
-            <FormField label="Time" required>
-              <input className="input" placeholder="2:00 PM" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+            <FormField label="End Date & Time" required>
+              <input type="datetime-local" className="input" value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} />
+            </FormField>
+            <FormField label="Duration Type" required>
+              <select className="input" value={form.durationType} onChange={(e) => setForm({ ...form, durationType: e.target.value })}>
+                <option>One Day</option>
+                <option>Multiple Days</option>
+                <option>Weekly</option>
+              </select>
+            </FormField>
+            <FormField label="Display Time">
+              <input className="input" placeholder="2:00 PM or 9:00 AM - 4:00 PM" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
             </FormField>
             <FormField label="Location" required>
               <input className="input" placeholder="Venue or address" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
@@ -658,6 +814,21 @@ export default function Events() {
             </FormField>
             <FormField label="Required Resources" required>
               <textarea className="input" placeholder="Resources, people, materials" value={form.requiredResources} onChange={(e) => setForm({ ...form, requiredResources: e.target.value })} />
+            </FormField>
+          </div>
+
+          <div className="form-grid">
+            <FormField label="Banner Image URL">
+              <input className="input" placeholder="https://..." value={form.bannerImageUrl} onChange={(e) => setForm({ ...form, bannerImageUrl: e.target.value })} />
+            </FormField>
+            <FormField label="Information Image URL">
+              <input className="input" placeholder="https://..." value={form.informationImageUrl} onChange={(e) => setForm({ ...form, informationImageUrl: e.target.value })} />
+            </FormField>
+            <FormField label="Documentation Image URL">
+              <input className="input" placeholder="https://..." value={form.documentationImageUrl} onChange={(e) => setForm({ ...form, documentationImageUrl: e.target.value })} />
+            </FormField>
+            <FormField label="Post Event Image URL">
+              <input className="input" placeholder="https://..." value={form.postEventImageUrl} onChange={(e) => setForm({ ...form, postEventImageUrl: e.target.value })} />
             </FormField>
           </div>
 
@@ -737,7 +908,7 @@ export default function Events() {
         {detailsEvent && (
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
-              <img src={bayanihanLogo} alt="BayanihanHub Logo" className="w-12 h-12 rounded-lg shrink-0" />
+              <img src={imageUrlFor(detailsEvent, "Banner") || bayanihanLogo} alt="Event banner" className="w-12 h-12 rounded-lg bg-white object-cover shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <StatusBadge value={detailsEvent.status} />
@@ -751,9 +922,9 @@ export default function Events() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg border border-surface-200 p-3">
-                <p className="text-2xs uppercase font-semibold text-surface-400">Date and Time</p>
+                <p className="text-2xs uppercase font-semibold text-surface-400">Event Duration</p>
                 <p className="font-medium text-surface-800">
-                  {detailsEvent.date ? new Date(detailsEvent.date).toLocaleDateString() : "TBA"} {detailsEvent.time || ""}
+                  {formatEventDuration(detailsEvent)}
                 </p>
               </div>
               <div className="rounded-lg border border-surface-200 p-3">
@@ -793,12 +964,84 @@ export default function Events() {
               </div>
             </div>
 
+            {(detailsEvent.eventImages?.length > 0 || detailsEvent.reviewImages?.length > 0) && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-surface-500 uppercase">Pictures</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {detailsEvent.eventImages?.map((image, index) => (
+                    <a key={`${image.imageType}-${index}`} href={image.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-surface-200 overflow-hidden no-underline bg-surface-50">
+                      <img src={image.imageUrl} alt={image.caption || image.imageType} className="h-32 w-full object-cover" />
+                      <div className="p-2 text-xs text-surface-600 flex items-center gap-1">
+                        <ImageIcon size={12} /> {image.imageType}
+                      </div>
+                    </a>
+                  ))}
+                  {detailsEvent.reviewImages?.map((image, index) => (
+                    <a key={`review-${index}`} href={image.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-surface-200 overflow-hidden no-underline bg-surface-50">
+                      <img src={image.imageUrl} alt={image.caption || "Review"} className="h-32 w-full object-cover" />
+                      <div className="p-2 text-xs text-surface-600 flex items-center gap-1">
+                        <ImageIcon size={12} /> Review photo
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {detailsEvent.progressUpdates?.length > 0 && (
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-xs font-semibold text-surface-500 uppercase mb-2">Progress Updates</p>
+                <div className="space-y-2">
+                  {detailsEvent.progressUpdates.slice().reverse().map((update, index) => (
+                    <div key={index} className="text-sm text-surface-700">
+                      <span className="font-semibold">{update.percentage}%</span>
+                      {update.note && <span> - {update.note}</span>}
+                      <p className="text-2xs text-surface-400">{update.updatedAt ? new Date(update.updatedAt).toLocaleString() : ""}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-2 pt-2">
               {mainRegistrationButton(detailsEvent)}
               <button className="btn-outline justify-center" onClick={() => navigate("/history")}>Open History</button>
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={!!progressEvent}
+        onClose={() => setProgressEvent(null)}
+        title="Update Event Progress"
+        description={progressEvent ? `Record progress for "${progressEvent.title || "this event"}".` : ""}
+      >
+        <form onSubmit={submitProgress} className="space-y-4">
+          <FormField label="Progress Percentage" required>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              className="input"
+              value={progressForm.percentage}
+              onChange={(e) => setProgressForm({ ...progressForm, percentage: e.target.value })}
+              required
+            />
+          </FormField>
+          <FormField label="Progress Note">
+            <textarea
+              className="input"
+              placeholder="What changed?"
+              value={progressForm.note}
+              onChange={(e) => setProgressForm({ ...progressForm, note: e.target.value })}
+            />
+          </FormField>
+          <div className="flex justify-end gap-3">
+            <button type="button" className="btn-outline" onClick={() => setProgressEvent(null)}>Cancel</button>
+            <button className="btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Save Progress"}</button>
+          </div>
+        </form>
       </Modal>
 
       <Modal

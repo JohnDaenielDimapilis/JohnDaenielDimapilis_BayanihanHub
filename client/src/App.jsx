@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Accounts from "./pages/Accounts.jsx";
+import Achievements from "./pages/Achievements.jsx";
 import ApprovalRequests from "./pages/ApprovalRequests.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Donations from "./pages/Donations.jsx";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="fundraisers/:id" element={<FundraiserDetail />} />
         <Route path="donations" element={<Donations />} />
         <Route path="my-donations" element={<MyDonations />} />
+        <Route path="achievements" element={<ProtectedRoute roles={["Admin", "User"]}><Achievements /></ProtectedRoute>} />
         <Route path="participants" element={<ProtectedRoute roles={["Admin", "Staff"]}><Participants /></ProtectedRoute>} />
         <Route path="feedback" element={<ProtectedRoute roles={["Admin", "Staff"]}><Feedback /></ProtectedRoute>} />
         <Route path="profile" element={<Profile />} />

@@ -1,4 +1,4 @@
-import { CheckCircle, Download, QrCode, UserX, Users } from "lucide-react";
+import { Award, CheckCircle, Download, QrCode, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, getToken, participantsApi } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
@@ -62,7 +62,14 @@ export default function Participants() {
           <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-xs font-bold shrink-0">
             {(row.userId?.name || "U")[0].toUpperCase()}
           </div>
-          <span className="text-sm font-medium text-surface-900">{row.userId?.name || "Unknown"}</span>
+          <div>
+            <span className="text-sm font-medium text-surface-900">{row.userId?.name || "Unknown"}</span>
+            {row.userId?.showAchievementBadge !== false && (
+              <span className="mt-1 inline-flex items-center gap-1 text-2xs font-semibold text-accent-700">
+                <Award size={11} /> Achievement badge visible
+              </span>
+            )}
+          </div>
         </div>
       ),
     },
