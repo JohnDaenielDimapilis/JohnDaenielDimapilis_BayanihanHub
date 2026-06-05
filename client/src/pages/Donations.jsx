@@ -15,8 +15,9 @@ export default function Donations() {
   const [fundraisers, setFundraisers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedDonation, setSelectedDonation] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [filters, setFilters] = useState({ period: "all", startDate: "", endDate: "" });
+  const [filters, setFilters] = useState({ startDate: "", endDate: "" });
   const [form, setForm] = useState({
     fundraiser: "",
     amount: "",
@@ -69,6 +70,7 @@ export default function Donations() {
     try {
       await api(`/donations/${id}/verify`, { method: "PATCH", body: JSON.stringify({ verificationNotes }) });
       toast.success("Donation verified and receipt recorded");
+      setSelectedDonation(null);
       load();
     } catch (err) { toast.error(err.message); }
   }
@@ -79,6 +81,7 @@ export default function Donations() {
     try {
       await api(`/donations/${id}/reject`, { method: "PATCH", body: JSON.stringify({ rejectionReason }) });
       toast.success("Donation rejected");
+      setSelectedDonation(null);
       load();
     } catch (err) { toast.error(err.message); }
   }
@@ -89,6 +92,7 @@ export default function Donations() {
     try {
       await api(`/donations/${id}/refund`, { method: "PATCH", body: JSON.stringify({ refundReason }) });
       toast.success("Donation marked as refunded");
+      setSelectedDonation(null);
       load();
     } catch (err) { toast.error(err.message); }
   }
@@ -99,25 +103,11 @@ export default function Donations() {
 
   const filteredDonations = donations.filter((donation) => {
     const donationDate = new Date(donation.donationDate || donation.createdAt);
-    const now = new Date();
-    if (filters.period === "day" && donationDate.toDateString() !== now.toDateString()) return false;
-    if (filters.period === "week") {
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - now.getDay());
-      weekStart.setHours(0, 0, 0, 0);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-      if (donationDate < weekStart || donationDate > weekEnd) return false;
-    }
-    if (filters.period === "month" && (donationDate.getFullYear() !== now.getFullYear() || donationDate.getMonth() !== now.getMonth())) return false;
-    if (filters.period === "custom") {
-      if (filters.startDate && donationDate < new Date(filters.startDate)) return false;
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        if (donationDate > end) return false;
-      }
+    if (filters.startDate && donationDate < new Date(filters.startDate)) return false;
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      if (donationDate > end) return false;
     }
     return true;
   });
@@ -154,13 +144,6 @@ export default function Donations() {
       render: (row) => <span className="badge badge-neutral">{row.donationType}</span>,
     },
     {
-      key: "purpose",
-      header: "Purpose",
-      sortable: false,
-      accessor: "donationPurpose",
-      render: (row) => <span className="text-sm text-surface-600 truncate max-w-[200px] block">{row.donationPurpose}</span>,
-    },
-    {
       key: "reference",
       header: "Reference",
       sortable: false,
@@ -168,18 +151,14 @@ export default function Donations() {
       render: (row) => <code className="text-xs bg-surface-100 px-2 py-1 rounded font-mono text-surface-600">{row.paymentReference}</code>,
     },
     {
-      key: "proof",
-      header: "Proof",
+      key: "info",
+      header: "Info",
       sortable: false,
-      accessor: "proofOfPayment",
-      render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.proofOfPayment || "No proof note"}</span>,
-    },
-    {
-      key: "message",
-      header: "Message",
-      sortable: false,
-      accessor: "message",
-      render: (row) => <span className="text-xs text-surface-600 max-w-[180px] truncate block">{row.message || "No message"}</span>,
+      render: (row) => (
+        <button className="btn-ghost btn-xs" onClick={() => setSelectedDonation(row)}>
+          More Info
+        </button>
+      ),
     },
     {
       key: "status",
@@ -189,26 +168,15 @@ export default function Donations() {
       render: (row) => <StatusBadge value={row.donationStatus} />,
     },
     {
-      key: "receipt",
-      header: "Receipt",
-      sortable: false,
-      accessor: "receiptNumber",
-      render: (row) => row.receiptNumber ? (
-        <code className="text-xs bg-success-50 px-2 py-1 rounded font-mono text-success-700">{row.receiptNumber}</code>
-      ) : (
-        <span className="text-xs text-surface-400">Pending</span>
-      ),
-    },
-    {
       key: "actions",
-      header: "",
+      header: "Action",
       sortable: false,
-      render: (row) => user.role === "Admin" ? (
+      render: (row) => user.role !== "User" ? (
         <div className="flex items-center gap-2 justify-end">
           {!["Verified", "Rejected", "Refunded", "Cancelled"].includes(row.donationStatus) && (
             <>
               <button className="btn-primary btn-xs" onClick={() => verifyDonation(row._id)}>
-                <CheckCircle size={13} /> Verify
+                <CheckCircle size={13} /> Approve
               </button>
               <button className="btn-danger btn-xs" onClick={() => rejectDonation(row._id)}>
                 <XCircle size={13} /> Reject
@@ -217,7 +185,7 @@ export default function Donations() {
           )}
           {row.donationStatus === "Verified" && (
             <button className="btn-outline btn-xs" onClick={() => refundDonation(row._id)}>
-              <RotateCcw size={13} /> Refund
+              <RotateCcw size={13} /> Edit
             </button>
           )}
         </div>
@@ -255,24 +223,15 @@ export default function Donations() {
         </div>
       </div>
 
-      <div className="card-padded grid grid-cols-1 md:grid-cols-4 gap-3">
-        <FormField label="Date">
-          <select className="input h-10" value={filters.period} onChange={(e) => setFilters({ ...filters, period: e.target.value })}>
-            <option value="all">All dates</option>
-            <option value="day">Today</option>
-            <option value="week">This week</option>
-            <option value="month">This month</option>
-            <option value="custom">Custom range</option>
-          </select>
-        </FormField>
+      <div className="card-padded grid grid-cols-1 md:grid-cols-3 gap-3">
         <FormField label="Start Date">
-          <input type="date" className="input h-10" value={filters.startDate} onChange={(e) => setFilters({ ...filters, period: "custom", startDate: e.target.value })} disabled={filters.period !== "custom"} />
+          <input type="date" className="input h-10" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
         </FormField>
         <FormField label="End Date">
-          <input type="date" className="input h-10" value={filters.endDate} onChange={(e) => setFilters({ ...filters, period: "custom", endDate: e.target.value })} disabled={filters.period !== "custom"} />
+          <input type="date" className="input h-10" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
         </FormField>
         <div className="flex items-end">
-          <button className="btn-outline w-full" onClick={() => setFilters({ period: "all", startDate: "", endDate: "" })}>Reset Date</button>
+          <button className="btn-outline w-full" onClick={() => setFilters({ startDate: "", endDate: "" })}>Reset Date</button>
         </div>
       </div>
 
@@ -280,11 +239,82 @@ export default function Donations() {
         data={filteredDonations}
         columns={columns}
         loading={loading}
-        searchPlaceholder="Search donations..."
+        searchable={false}
         emptyTitle="No donations yet"
         emptyDescription="Start recording donations by clicking the button above."
-        exportFilename="donations"
       />
+
+      <Modal
+        open={!!selectedDonation}
+        onClose={() => setSelectedDonation(null)}
+        title="Donation Information"
+        description={selectedDonation ? `${selectedDonation.donorAnonymous ? "Anonymous donor" : selectedDonation.donor?.name || "Anonymous"} - PHP ${Number(selectedDonation.amount || 0).toLocaleString()}` : ""}
+      >
+        {selectedDonation && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Fundraiser</p>
+                <p className="font-medium text-surface-800">{selectedDonation.fundraiserId?.title || "General donation"}</p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Donation Date</p>
+                <p className="font-medium text-surface-800">{selectedDonation.donationDate ? new Date(selectedDonation.donationDate).toLocaleString() : "Not recorded"}</p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Payment Reference</p>
+                <p className="font-medium text-surface-800 break-all">{selectedDonation.paymentReference || "None"}</p>
+              </div>
+              <div className="rounded-lg border border-surface-200 p-3">
+                <p className="text-2xs uppercase font-semibold text-surface-400">Receipt</p>
+                <p className="font-medium text-surface-800">{selectedDonation.receiptNumber || "Pending"}</p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-surface-200 p-4 space-y-3 text-sm text-surface-700">
+              <div>
+                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Purpose</p>
+                <p>{selectedDonation.donationPurpose || selectedDonation.fundraiserId?.purpose || "Not specified"}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Proof / Attachment</p>
+                <p className="break-words">{selectedDonation.proofOfPayment || "No proof details provided."}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Donor Message</p>
+                <p>{selectedDonation.message || "No donor message."}</p>
+              </div>
+              {(selectedDonation.verificationNotes || selectedDonation.rejectionReason || selectedDonation.refundReason) && (
+                <div>
+                  <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Review Notes</p>
+                  <p>{selectedDonation.verificationNotes || selectedDonation.rejectionReason || selectedDonation.refundReason}</p>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-200 p-3">
+              <StatusBadge value={selectedDonation.donationStatus} />
+              {user.role !== "User" && (
+                <div className="flex flex-wrap gap-2">
+                  {!["Verified", "Rejected", "Refunded", "Cancelled"].includes(selectedDonation.donationStatus) && (
+                    <>
+                      <button className="btn-primary btn-sm" onClick={() => verifyDonation(selectedDonation._id)}>
+                        <CheckCircle size={14} /> Approve
+                      </button>
+                      <button className="btn-danger btn-sm" onClick={() => rejectDonation(selectedDonation._id)}>
+                        <XCircle size={14} /> Reject
+                      </button>
+                    </>
+                  )}
+                  {selectedDonation.donationStatus === "Verified" && (
+                    <button className="btn-outline btn-sm" onClick={() => refundDonation(selectedDonation._id)}>
+                      <RotateCcw size={14} /> Edit
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Submit Donation" description="Submit proof for admin verification.">
         <form onSubmit={create} className="space-y-4">

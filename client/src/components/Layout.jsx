@@ -1,7 +1,7 @@
 import {
   Award, Bell, CalendarDays, ChartNoAxesCombined, ChevronLeft, ClipboardList,
-  Gift, HandCoins, History, Inbox, LayoutDashboard, LogOut, Menu, MessageSquare, Search,
-  UserCog, Users, X
+  Gift, HandCoins, History, Inbox, LayoutDashboard, LogOut, Menu, Search,
+  UserCog, X
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
@@ -24,10 +24,8 @@ const navSections = [
       { to: "/events", label: "Events", icon: CalendarDays },
       { to: "/fundraisers", label: "Fundraisers", icon: Gift, roles: ["Admin", "Staff", "User"] },
       { to: "/donations", label: "Donations", icon: HandCoins, roles: ["Admin", "Staff", "User"] },
-      { to: "/history", label: "History", icon: History },
+      { to: "/history", label: "History", icon: History, roles: ["User"] },
       { to: "/achievements", label: "Achievements", icon: Award, roles: ["Admin", "User"] },
-      { to: "/participants", label: "Participants", icon: Users, roles: ["Admin", "Staff"] },
-      { to: "/feedback", label: "Feedback Analytics", icon: MessageSquare, roles: ["Admin", "Staff"] },
     ],
   },
   {

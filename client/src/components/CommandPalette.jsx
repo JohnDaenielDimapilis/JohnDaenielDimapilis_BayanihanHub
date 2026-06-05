@@ -1,6 +1,6 @@
 import {
   Award, CalendarDays, ChartNoAxesCombined, ClipboardList, Gift, HandCoins,
-  History, Inbox, LayoutDashboard, MessageSquare, Search, UserCog, Users
+  History, Inbox, LayoutDashboard, Search, UserCog
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -9,12 +9,10 @@ import { useAuth } from "../context/AuthContext.jsx";
 const allPages = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, keywords: "home overview" },
   { to: "/events", label: "Events", icon: CalendarDays, keywords: "event calendar" },
-  { to: "/history", label: "History", icon: History, keywords: "joined event attendance feedback" },
+  { to: "/history", label: "History", icon: History, keywords: "joined event attendance feedback", roles: ["User"] },
   { to: "/fundraisers", label: "Fundraisers", icon: Gift, keywords: "campaign fundraising" },
   { to: "/donations", label: "Donations", icon: HandCoins, keywords: "donate money" },
-  { to: "/participants", label: "Participants", icon: Users, keywords: "attendees members", roles: ["Admin", "Staff"] },
-  { to: "/feedback", label: "Feedback Analytics", icon: MessageSquare, keywords: "comments reviews ratings", roles: ["Admin", "Staff"] },
-  { to: "/achievements", label: "Achievements", icon: Award, keywords: "badges milestones" },
+  { to: "/achievements", label: "Achievements", icon: Award, keywords: "badges milestones", roles: ["Admin", "User"] },
   { to: "/accounts", label: "Accounts", icon: UserCog, keywords: "users accounts admin staff", roles: ["Admin", "Staff"] },
   { to: "/approval-requests", label: "Approval Requests", icon: Inbox, keywords: "review approve reject pending", roles: ["Admin", "Staff"] },
   { to: "/reports", label: "Reports", icon: ChartNoAxesCombined, keywords: "analytics data", roles: ["Admin", "Staff"] },

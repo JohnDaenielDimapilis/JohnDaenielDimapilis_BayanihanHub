@@ -13,8 +13,8 @@ const router = express.Router();
 router.use(protect);
 router.post("/", authorize("User"), createDonation);
 router.get("/", authorize("Admin", "Staff", "User"), getDonations);
-router.patch("/:id/verify", authorize("Admin"), verifyDonation);
-router.patch("/:id/reject", authorize("Admin"), rejectDonation);
-router.patch("/:id/refund", authorize("Admin"), refundDonation);
+router.patch("/:id/verify", authorize("Admin", "Staff"), verifyDonation);
+router.patch("/:id/reject", authorize("Admin", "Staff"), rejectDonation);
+router.patch("/:id/refund", authorize("Admin", "Staff"), refundDonation);
 
 export default router;

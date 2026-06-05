@@ -150,6 +150,10 @@ export default function Events() {
   const [reportEvent, setReportEvent] = useState(null);
   const [reportForm, setReportForm] = useState(blankReport);
   const [detailsEvent, setDetailsEvent] = useState(null);
+  const [detailsTab, setDetailsTab] = useState("info");
+  const [detailParticipants, setDetailParticipants] = useState([]);
+  const [detailParticipantsLoading, setDetailParticipantsLoading] = useState(false);
+  const [adminFilters, setAdminFilters] = useState({ search: "", type: "all", startDate: "", endDate: "" });
   const [dateFilter, setDateFilter] = useState({ type: "all", value: "", startDate: "", endDate: "" });
   const [locationFilter, setLocationFilter] = useState("");
   const [eventStatusFilter, setEventStatusFilter] = useState("all");
@@ -370,6 +374,99 @@ export default function Events() {
     return user.role === "Admin" || row.createdBy?.role === "User";
   }
 
+  function canEditAdminEvent(row) {
+    return user.role === "Admin" || canManage(row) || (user.role === "Staff" && row.createdBy?.role === "User");
+  }
+
+  function eventDateValue(event) {
+    const value = event.startDateTime || event.date;
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+  }
+
+  function eventHasStarted(event) {
+    const eventDate = eventDateValue(event);
+    return eventDate ? eventDate <= new Date() : false;
+  }
+
+  function matchesDatePreset(event, filter) {
+    if (!filter || filter.type === "all") return true;
+    const eventDate = eventDateValue(event);
+    if (!eventDate) return true;
+    const now = new Date();
+    if (filter.type === "day") return eventDate.toDateString() === now.toDateString();
+    if (filter.type === "week") {
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      return eventDate >= weekStart && eventDate <= weekEnd;
+    }
+    if (filter.type === "month") return eventDate.getFullYear() === now.getFullYear() && eventDate.getMonth() === now.getMonth();
+    if (filter.type === "custom") {
+      if (filter.startDate && eventDate < new Date(filter.startDate)) return false;
+      if (filter.endDate) {
+        const end = new Date(filter.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (eventDate > end) return false;
+      }
+    }
+    return true;
+  }
+
+  function openDetails(event, tab = "info") {
+    setDetailsEvent(event);
+    setDetailsTab(tab);
+    setDetailParticipants([]);
+    if (user.role === "User") return;
+    setDetailParticipantsLoading(true);
+    participantsApi.getByEvent(event._id)
+      .then((data) => setDetailParticipants(Array.isArray(data) ? data : []))
+      .catch((err) => toast.error(err.message || "Failed to load participants"))
+      .finally(() => setDetailParticipantsLoading(false));
+  }
+
+  async function refreshDetailParticipants(event = detailsEvent) {
+    if (!event || user.role === "User") return;
+    setDetailParticipantsLoading(true);
+    try {
+      const data = await participantsApi.getByEvent(event._id);
+      setDetailParticipants(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast.error(err.message || "Failed to refresh participants");
+    } finally {
+      setDetailParticipantsLoading(false);
+    }
+  }
+
+  async function updateAttendance(participant, attendanceStatus) {
+    try {
+      await participantsApi.manualAttendance(participant._id, {
+        attendanceStatus,
+        attendanceRemarks: `Manual ${attendanceStatus.toLowerCase()} update by ${user.role}`
+      });
+      toast.success("Attendance updated");
+      refreshDetailParticipants();
+      load();
+    } catch (err) {
+      toast.error(err.message || "Attendance update failed");
+    }
+  }
+
+  async function openEventQr(event) {
+    if (!eventHasStarted(event) && event.status !== "Finished") {
+      toast.error("QR information is available only once the event has started.");
+      return;
+    }
+    if (!event.qrCodeToken && !canManage(event)) {
+      toast.error("The event creator has not generated a QR code yet.");
+      return;
+    }
+    await runAction("qr", event);
+  }
+
   function renderActions(row) {
     const registration = registrationByEvent[row._id];
     const isManager = user.role !== "User" && canManage(row);
@@ -510,6 +607,37 @@ export default function Events() {
     return matchesDateFilter(event) && locationMatch && eventStatusMatch && registrationMatch && viewMatch;
   });
 
+  const adminEvents = events.filter((event) => {
+    const q = adminFilters.search.trim().toLowerCase();
+    const searchMatch = !q || [
+      event.title,
+      event.createdBy?.name,
+      event.location,
+      event.targetBeneficiaries
+    ].some((value) => String(value || "").toLowerCase().includes(q));
+    return searchMatch && matchesDatePreset(event, adminFilters);
+  });
+
+  const adminStats = useMemo(() => {
+    const total = adminEvents.length;
+    const average = (values) => total ? Math.round(values.reduce((sum, value) => sum + Number(value || 0), 0) / total) : 0;
+    const attendanceValues = adminEvents.map((event) => event.postEventReport?.attendanceCount || 0);
+    const capacityValues = adminEvents.map((event) => {
+      const limit = Number(event.participantLimit || 0);
+      return limit > 0 ? ((Number(event.joinedCount || 0) / limit) * 100) : 0;
+    });
+    return {
+      total,
+      approved: adminEvents.filter((event) => event.status === "Approved").length,
+      pending: adminEvents.filter((event) => event.status === "Pending Review").length,
+      cancelled: adminEvents.filter((event) => event.status === "Cancelled").length,
+      finished: adminEvents.filter((event) => event.status === "Finished").length,
+      attendance: average(attendanceValues),
+      progress: average(adminEvents.map((event) => event.progressPercentage || 0)),
+      capacity: average(capacityValues)
+    };
+  }, [adminEvents]);
+
   function mainRegistrationButton(event) {
     const registration = registrationByEvent[event._id];
     if (registration && ["Joined", "Waitlisted"].includes(registration.participationStatus)) {
@@ -524,7 +652,7 @@ export default function Events() {
     }
     if (event.status === "Full") return <button className="btn-outline w-full justify-center" disabled>Event Full</button>;
     if (event.status === "Closed") return <button className="btn-outline w-full justify-center" disabled>Registration Closed</button>;
-    if (event.status === "Finished") return <button className="btn-primary w-full justify-center" onClick={() => setDetailsEvent(event)}>View History / Give Feedback</button>;
+    if (event.status === "Finished") return <button className="btn-primary w-full justify-center" onClick={() => openDetails(event)}>View History / Give Feedback</button>;
     if (event.status === "Cancelled") return <button className="btn-danger w-full justify-center" disabled>Cancelled</button>;
     return <button className="btn-outline w-full justify-center" disabled>Unavailable</button>;
   }
@@ -754,7 +882,7 @@ export default function Events() {
 
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge value={registration?.participationStatus || (event.status === "Open for Registration" ? "Available" : event.status)} />
-                      <button className="btn-ghost btn-sm" onClick={() => setDetailsEvent(event)}>View Details</button>
+                      <button className="btn-ghost btn-sm" onClick={() => openDetails(event)}>View Details</button>
                     </div>
 
                     <div className="mt-auto">
@@ -779,15 +907,140 @@ export default function Events() {
           )}
         </>
       ) : (
-        <DataTable
-          data={events}
-          columns={columns}
-          loading={loading}
-          searchPlaceholder="Search events..."
-          emptyTitle="No events yet"
-          emptyDescription="Create a draft event or open an approved event for registration."
-          exportFilename="events"
-        />
+        <>
+          <div className="card-padded grid grid-cols-1 lg:grid-cols-[1fr_220px_auto] gap-3 items-end">
+            <FormField label="Search Events">
+              <input
+                className="input h-10"
+                placeholder="Title, creator, location, beneficiary"
+                value={adminFilters.search}
+                onChange={(e) => setAdminFilters({ ...adminFilters, search: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Date Filter">
+              <select
+                className="input h-10"
+                value={adminFilters.type}
+                onChange={(e) => setAdminFilters({ ...adminFilters, type: e.target.value })}
+              >
+                <option value="all">All Dates</option>
+                <option value="day">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+            </FormField>
+            <button
+              className="btn-outline h-10 justify-center"
+              onClick={() => setAdminFilters({ search: "", type: "all", startDate: "", endDate: "" })}
+            >
+              Reset
+            </button>
+            {adminFilters.type === "custom" && (
+              <>
+                <FormField label="Start Date">
+                  <input
+                    type="date"
+                    className="input h-10"
+                    value={adminFilters.startDate}
+                    onChange={(e) => setAdminFilters({ ...adminFilters, startDate: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="End Date">
+                  <input
+                    type="date"
+                    className="input h-10"
+                    value={adminFilters.endDate}
+                    onChange={(e) => setAdminFilters({ ...adminFilters, endDate: e.target.value })}
+                  />
+                </FormField>
+              </>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+            {[
+              ["Total", adminStats.total],
+              ["Approved", adminStats.approved],
+              ["Pending", adminStats.pending],
+              ["Cancelled", adminStats.cancelled],
+              ["Finished", adminStats.finished],
+              ["Avg Attendance", adminStats.attendance],
+              ["Avg Progress", `${adminStats.progress}%`],
+              ["Avg Capacity", `${adminStats.capacity}%`]
+            ].map(([label, value]) => (
+              <div key={label} className="stat-card-component">
+                <span className="text-2xs font-semibold uppercase tracking-wider text-surface-400">{label}</span>
+                <strong className="text-xl font-bold text-surface-900">{value}</strong>
+              </div>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="card-padded text-sm text-surface-500">Loading events...</div>
+          ) : adminEvents.length === 0 ? (
+            <div className="card-padded text-sm text-surface-500">No events match the selected search or date filter.</div>
+          ) : (
+            <div className="space-y-3">
+              {adminEvents.map((event) => {
+                const approvalAllowed = event.status === "Pending Review" && canReview(event);
+                return (
+                  <article key={event._id} className="card-padded overflow-hidden">
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.6fr)_minmax(150px,0.9fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(170px,0.9fr)] gap-4 items-start">
+                      <div className="min-w-0">
+                        <div className="flex items-start gap-3">
+                          <img src={imageUrlFor(event, "Banner") || bayanihanLogo} alt="Event banner" className="w-12 h-12 rounded-lg bg-white object-cover shrink-0" />
+                          <div className="min-w-0">
+                            <h2 className="text-base font-semibold text-surface-900 break-words">{event.title || "Untitled event"}</h2>
+                            <p className="text-xs text-surface-500 truncate">Creator: {event.createdBy?.name || "Unknown"} - {event.eventType || "Community event"}</p>
+                            <p className="mt-2 text-sm text-surface-600 line-clamp-2">{event.description || "No description provided."}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-sm text-surface-600">
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Date</p>
+                        <p className="font-medium text-surface-800">{eventDateValue(event)?.toLocaleDateString() || "TBA"}</p>
+                        <p className="text-xs text-surface-500">{event.durationType || "One Day"}</p>
+                      </div>
+                      <div className="text-sm text-surface-600 min-w-0">
+                        <p className="text-2xs uppercase font-semibold text-surface-400">Location</p>
+                        <p className="font-medium text-surface-800 break-words">{event.location || "TBA"}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <StatusBadge value={event.status} />
+                        <ProgressCell value={event.progressPercentage} />
+                        <p className="text-xs text-surface-500">Capacity {event.capacityDisplay || `${event.joinedCount || 0}/${event.participantLimit || 0}`}</p>
+                      </div>
+                      <div className="flex flex-wrap xl:justify-end gap-2">
+                        {["Draft", "Pending Review", "Rejected", "Approved"].includes(event.status) && canEditAdminEvent(event) && (
+                          <button className="btn-outline btn-sm" onClick={() => openEdit(event)}>
+                            <Edit3 size={14} />
+                            Edit
+                          </button>
+                        )}
+                        {approvalAllowed && (
+                          <>
+                            <button className="btn-primary btn-sm" onClick={() => runAction("approve", event)}>
+                              <CheckCircle size={14} />
+                              Approve
+                            </button>
+                            <button className="btn-danger btn-sm" onClick={() => runAction("reject", event)}>
+                              <XCircle size={14} />
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        <button className="btn-ghost btn-sm" onClick={() => openDetails(event)}>
+                          More Info
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <Modal
@@ -947,14 +1200,13 @@ export default function Events() {
 
       <Modal
         open={!!detailsEvent}
-        onClose={() => setDetailsEvent(null)}
+        onClose={() => { setDetailsEvent(null); setDetailParticipants([]); }}
         title={detailsEvent?.title || "Event Details"}
         size="2xl"
         description={detailsEvent ? `${detailsEvent.eventType || "Community event"} - ${detailsEvent.location || "Location TBA"}` : ""}
       >
         {detailsEvent && (
           <div className="space-y-5">
-            <p className="text-xs font-semibold text-surface-500 uppercase">Overview</p>
             <div className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
               <img src={imageUrlFor(detailsEvent, "Banner") || bayanihanLogo} alt="Event banner" className="w-12 h-12 rounded-lg bg-white object-cover shrink-0" />
               <div className="min-w-0 flex-1">
@@ -968,94 +1220,244 @@ export default function Events() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg border border-surface-200 p-3">
-                <p className="text-2xs uppercase font-semibold text-surface-400">Event Duration</p>
-                <p className="font-medium text-surface-800">
-                  {formatEventDuration(detailsEvent)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-surface-200 p-3">
-                <p className="text-2xs uppercase font-semibold text-surface-400">Capacity</p>
-                <p className="font-medium text-surface-800">{detailsEvent.capacityDisplay || `${detailsEvent.joinedCount || 0}/${detailsEvent.participantLimit || 0}`}</p>
-              </div>
-              <div className="rounded-lg border border-surface-200 p-3">
-                <p className="text-2xs uppercase font-semibold text-surface-400">Registration</p>
-                <p className="font-medium text-surface-800">
-                  {registrationByEvent[detailsEvent._id]?.participationStatus || (detailsEvent.status === "Open for Registration" ? "Available" : detailsEvent.status)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-surface-200 p-3">
-                <p className="text-2xs uppercase font-semibold text-surface-400">Attendance</p>
-                <p className="font-medium text-surface-800">{registrationByEvent[detailsEvent._id]?.attendanceStatus || "Not joined"}</p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-surface-200 p-4 space-y-3">
-              <p className="text-xs font-semibold text-surface-500 uppercase">Purpose and Beneficiaries</p>
-              <div>
-                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Description</p>
-                <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.description || "No description provided."}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Objectives</p>
-                <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.objectives || "No objectives provided."}</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Target Beneficiaries</p>
-                  <p className="text-sm text-surface-700">{detailsEvent.targetBeneficiaries || "Not specified"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Required Resources</p>
-                  <p className="text-sm text-surface-700">{detailsEvent.requiredResources || "Not specified"}</p>
-                </div>
-              </div>
-            </div>
-
-            {(detailsEvent.eventImages?.length > 0 || detailsEvent.reviewImages?.length > 0) && (
-              <div className="rounded-lg border border-surface-200 p-4 space-y-3">
-                <p className="text-xs font-semibold text-surface-500 uppercase">Pictures</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {detailsEvent.eventImages?.map((image, index) => (
-                    <a key={`${image.imageType}-${index}`} href={image.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-surface-200 overflow-hidden no-underline bg-surface-50">
-                      <img src={image.imageUrl} alt={image.caption || image.imageType} className="h-32 w-full object-cover" />
-                      <div className="p-2 text-xs text-surface-600 flex items-center gap-1">
-                        <ImageIcon size={12} /> {image.imageType}
-                      </div>
-                    </a>
-                  ))}
-                  {detailsEvent.reviewImages?.map((image, index) => (
-                    <a key={`review-${index}`} href={image.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-surface-200 overflow-hidden no-underline bg-surface-50">
-                      <img src={image.imageUrl} alt={image.caption || "Review"} className="h-32 w-full object-cover" />
-                      <div className="p-2 text-xs text-surface-600 flex items-center gap-1">
-                        <ImageIcon size={12} /> Review photo
-                      </div>
-                    </a>
-                  ))}
-                </div>
+            {user.role !== "User" && (
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["info", "Event Information"],
+                  ["participants", "Participants"],
+                  ["attendance", "Attendance"],
+                  ["qr", "QR Information"],
+                  ["reports", "Reports"]
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    className={`btn-sm ${detailsTab === id ? "btn-primary" : "btn-ghost"}`}
+                    onClick={() => setDetailsTab(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             )}
 
-            {detailsEvent.progressUpdates?.length > 0 && (
-              <div className="rounded-lg border border-surface-200 p-4">
-                <p className="text-xs font-semibold text-surface-500 uppercase mb-2">Progress Updates</p>
-                <div className="space-y-2">
-                  {detailsEvent.progressUpdates.slice().reverse().map((update, index) => (
-                    <div key={index} className="text-sm text-surface-700">
-                      <span className="font-semibold">{update.percentage}%</span>
-                      {update.note && <span> - {update.note}</span>}
-                      <p className="text-2xs text-surface-400">{update.updatedAt ? new Date(update.updatedAt).toLocaleString() : ""}</p>
+            {detailsTab === "info" && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-lg border border-surface-200 p-3">
+                    <p className="text-2xs uppercase font-semibold text-surface-400">Event Duration</p>
+                    <p className="font-medium text-surface-800">{formatEventDuration(detailsEvent)}</p>
+                  </div>
+                  <div className="rounded-lg border border-surface-200 p-3">
+                    <p className="text-2xs uppercase font-semibold text-surface-400">Capacity</p>
+                    <p className="font-medium text-surface-800">
+                      {user.role !== "User" && detailParticipants.length
+                        ? `${detailParticipants.filter((item) => item.participationStatus !== "Cancelled").length}/${detailsEvent.participantLimit || 0}`
+                        : detailsEvent.capacityDisplay || `${detailsEvent.joinedCount || 0}/${detailsEvent.participantLimit || 0}`}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-surface-200 p-3">
+                    <p className="text-2xs uppercase font-semibold text-surface-400">Registration</p>
+                    <p className="font-medium text-surface-800">
+                      {registrationByEvent[detailsEvent._id]?.participationStatus || (detailsEvent.status === "Open for Registration" ? "Available" : detailsEvent.status)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-surface-200 p-3">
+                    <p className="text-2xs uppercase font-semibold text-surface-400">Attendance</p>
+                    <p className="font-medium text-surface-800">{registrationByEvent[detailsEvent._id]?.attendanceStatus || "Not joined"}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-surface-200 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-surface-500 uppercase">Purpose and Beneficiaries</p>
+                  <div>
+                    <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Description</p>
+                    <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.description || "No description provided."}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Objectives</p>
+                    <p className="text-sm text-surface-700 leading-relaxed">{detailsEvent.objectives || "No objectives provided."}</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Target Beneficiaries</p>
+                      <p className="text-sm text-surface-700">{detailsEvent.targetBeneficiaries || "Not specified"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-surface-500 uppercase mb-1">Required Resources</p>
+                      <p className="text-sm text-surface-700">{detailsEvent.requiredResources || "Not specified"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {(detailsEvent.eventImages?.length > 0 || detailsEvent.reviewImages?.length > 0) && (
+                  <div className="rounded-lg border border-surface-200 p-4 space-y-3">
+                    <p className="text-xs font-semibold text-surface-500 uppercase">Pictures</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {detailsEvent.eventImages?.map((image, index) => (
+                        <a key={`${image.imageType}-${index}`} href={image.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-surface-200 overflow-hidden no-underline bg-surface-50">
+                          <img src={image.imageUrl} alt={image.caption || image.imageType} className="h-32 w-full object-cover" />
+                          <div className="p-2 text-xs text-surface-600 flex items-center gap-1">
+                            <ImageIcon size={12} /> {image.imageType}
+                          </div>
+                        </a>
+                      ))}
+                      {detailsEvent.reviewImages?.map((image, index) => (
+                        <a key={`review-${index}`} href={image.imageUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-surface-200 overflow-hidden no-underline bg-surface-50">
+                          <img src={image.imageUrl} alt={image.caption || "Review"} className="h-32 w-full object-cover" />
+                          <div className="p-2 text-xs text-surface-600 flex items-center gap-1">
+                            <ImageIcon size={12} /> Review photo
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {detailsTab === "participants" && (
+              <div className="rounded-lg border border-surface-200 overflow-hidden">
+                <div className="px-4 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-surface-900">Participant List</p>
+                    <p className="text-xs text-surface-500">
+                      Active capacity: {detailParticipants.filter((item) => item.participationStatus !== "Cancelled").length}/{detailsEvent.participantLimit || 0}
+                    </p>
+                  </div>
+                  <button className="btn-outline btn-sm" onClick={() => refreshDetailParticipants(detailsEvent)}>Refresh</button>
+                </div>
+                {detailParticipantsLoading ? (
+                  <p className="p-4 text-sm text-surface-500">Loading participants...</p>
+                ) : detailParticipants.length === 0 ? (
+                  <p className="p-4 text-sm text-surface-500">No participants yet.</p>
+                ) : (
+                  <div className="divide-y divide-surface-100">
+                    {detailParticipants.map((participant) => (
+                      <div key={participant._id} className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr] gap-3 p-4 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-surface-900 truncate">{participant.userId?.name || "Unknown participant"}</p>
+                          <p className="text-xs text-surface-500 truncate">{participant.userId?.email || "No email"}</p>
+                        </div>
+                        <StatusBadge value={participant.participationStatus} />
+                        <StatusBadge value={participant.attendanceStatus} />
+                        <p className="text-surface-600">{participant.joinedAt ? new Date(participant.joinedAt).toLocaleDateString() : "N/A"}</p>
+                        <p className="text-surface-600">{participant.userId?.showAchievementBadge ? "Visible" : "Hidden"}</p>
+                        <div className="flex flex-wrap gap-2 md:justify-end">
+                          <button className="btn-outline btn-xs" onClick={() => updateAttendance(participant, "Present")}>Present</button>
+                          <button className="btn-ghost btn-xs" onClick={() => updateAttendance(participant, "Absent")}>Absent</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {detailsTab === "attendance" && (
+              <div className="rounded-lg border border-surface-200 p-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {["Present", "Absent", "Pending"].map((status) => (
+                    <div key={status} className="rounded-lg border border-surface-200 p-3">
+                      <p className="text-2xs uppercase font-semibold text-surface-400">{status}</p>
+                      <p className="text-2xl font-bold text-surface-900">{detailParticipants.filter((item) => item.attendanceStatus === status).length}</p>
                     </div>
                   ))}
                 </div>
+                <p className="text-sm text-surface-600">Use the Participants tab to update manual attendance for individual users.</p>
               </div>
             )}
 
-            <div className="sticky bottom-0 -mx-6 -mb-6 flex flex-col sm:flex-row gap-2 border-t border-surface-200 bg-white/95 p-4 backdrop-blur">
-              {mainRegistrationButton(detailsEvent)}
-              <button className="btn-outline justify-center" onClick={() => navigate("/history")}>Open History</button>
-            </div>
+            {detailsTab === "qr" && (
+              <div className="rounded-lg border border-surface-200 p-4 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold text-surface-500 uppercase">QR Availability</p>
+                  <p className="text-sm text-surface-700 mt-1">
+                    {eventHasStarted(detailsEvent) || detailsEvent.status === "Finished"
+                      ? detailsEvent.qrCodeToken
+                        ? "A QR payload has already been generated for attendance."
+                        : canManage(detailsEvent)
+                          ? "This event has started. The creator can generate the attendance QR now."
+                          : "The event has started, but the creator has not generated a QR payload yet."
+                      : "QR information becomes available once the event starts."}
+                  </p>
+                </div>
+                {(eventHasStarted(detailsEvent) || detailsEvent.status === "Finished") && (detailsEvent.qrCodeToken || canManage(detailsEvent)) && (
+                  <button className="btn-primary justify-center" onClick={() => openEventQr(detailsEvent)}>
+                    <QrCode size={16} />
+                    {detailsEvent.qrCodeToken ? "View QR Payload" : "Generate QR Payload"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {detailsTab === "reports" && (
+              <div className="space-y-4">
+                {detailsEvent.progressUpdates?.length > 0 && (
+                  <div className="rounded-lg border border-surface-200 p-4">
+                    <p className="text-xs font-semibold text-surface-500 uppercase mb-2">Progress Updates</p>
+                    <div className="space-y-2">
+                      {detailsEvent.progressUpdates.slice().reverse().map((update, index) => (
+                        <div key={index} className="text-sm text-surface-700">
+                          <span className="font-semibold">{update.percentage}%</span>
+                          {update.note && <span> - {update.note}</span>}
+                          <p className="text-2xs text-surface-400">{update.updatedAt ? new Date(update.updatedAt).toLocaleString() : ""}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {detailsEvent.postEventReport?.outcomeSummary && (
+                  <div className="rounded-lg border border-surface-200 p-4 space-y-2 text-sm text-surface-700">
+                    <p className="text-xs font-semibold text-surface-500 uppercase">Post-Event Report</p>
+                    <p><span className="font-semibold">Attendance:</span> {detailsEvent.postEventReport.attendanceCount || 0}</p>
+                    <p><span className="font-semibold">Beneficiaries:</span> {detailsEvent.postEventReport.actualBeneficiariesServed || 0}</p>
+                    <p>{detailsEvent.postEventReport.outcomeSummary}</p>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {["Draft", "Rejected"].includes(detailsEvent.status) && canManage(detailsEvent) && (
+                    <button className="btn-primary btn-sm" onClick={() => runAction("submit", detailsEvent)}>
+                      <Send size={14} />
+                      Submit
+                    </button>
+                  )}
+                  {detailsEvent.status === "Pending Review" && canReview(detailsEvent) && (
+                    <button className="btn-outline btn-sm" onClick={() => runAction("revision", detailsEvent)}>Revision</button>
+                  )}
+                  {detailsEvent.status === "Approved" && canManage(detailsEvent) && (
+                    <button className="btn-primary btn-sm" onClick={() => runAction("open", detailsEvent)}>Open Registration</button>
+                  )}
+                  {["Open for Registration", "Full"].includes(detailsEvent.status) && canManage(detailsEvent) && (
+                    <>
+                      <button className="btn-outline btn-sm" onClick={() => runAction("close", detailsEvent)}>Close</button>
+                      <button className="btn-danger btn-sm" onClick={() => runAction("cancel", detailsEvent)}>Cancel</button>
+                    </>
+                  )}
+                  {canManage(detailsEvent) && !["Archived", "Cancelled", "Rejected"].includes(detailsEvent.status) && (
+                    <button className="btn-outline btn-sm" onClick={() => { setProgressEvent(detailsEvent); setProgressForm({ percentage: detailsEvent.progressPercentage || 0, note: "" }); }}>Progress</button>
+                  )}
+                  {["Open for Registration", "Full", "Closed"].includes(detailsEvent.status) && canManage(detailsEvent) && (
+                    <button className="btn-primary btn-sm" onClick={() => { setReportEvent(detailsEvent); setReportForm(blankReport); }}>
+                      <FileText size={14} />
+                      Report
+                    </button>
+                  )}
+                  {detailsEvent.status === "Finished" && canManage(detailsEvent) && (
+                    <button className="btn-outline btn-sm" onClick={() => runAction("archive", detailsEvent)}>
+                      <Archive size={14} />
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {user.role === "User" && (
+              <div className="sticky bottom-0 -mx-6 -mb-6 flex flex-col sm:flex-row gap-2 border-t border-surface-200 bg-white/95 p-4 backdrop-blur">
+                {mainRegistrationButton(detailsEvent)}
+                <button className="btn-outline justify-center" onClick={() => navigate("/history")}>Open History</button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

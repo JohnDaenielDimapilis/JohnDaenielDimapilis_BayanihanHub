@@ -47,8 +47,8 @@ router.patch("/:id/cancel", authorize("Admin", "Staff"), cancelEvent);
 router.patch("/:id/complete", authorize("Admin", "Staff"), completeEvent);
 router.patch("/:id/finish", authorize("Admin", "Staff"), completeEvent);
 router.patch("/:id/archive", authorize("Admin", "Staff"), archiveEvent);
-router.post("/:id/generate-qr", authorize("Admin", "Staff"), generateEventQr);
-router.get("/:id/qr", authorize("Admin", "Staff"), getEventQr);
+router.post("/:id/generate-qr", authorize("Admin", "Staff", "User"), generateEventQr);
+router.get("/:id/qr", authorize("Admin", "Staff", "User"), getEventQr);
 router.post("/:id/scan-qr", authorize("User"), scanEventQr);
 
 export default router;

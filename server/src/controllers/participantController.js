@@ -5,7 +5,11 @@ import { createLog } from "./logController.js";
 import { createNotification } from "./notificationController.js";
 
 function canManageParticipant(req, event) {
-  return req.user.role === "Admin" || event.createdBy?.toString() === req.user._id.toString();
+  if (req.user.role === "Admin") return true;
+  const creator = event.createdBy;
+  const creatorId = creator?._id || creator;
+  if (creatorId?.toString() === req.user._id.toString()) return true;
+  return req.user.role === "Staff" && creator?.role === "User";
 }
 
 function csvEscape(value) {
@@ -91,7 +95,7 @@ function getJoinAvailabilityError(event) {
 
 export async function joinEvent(req, res) {
   try {
-    const event = await Event.findById(req.params.eventId);
+    const event = await Event.findById(req.params.eventId).populate("createdBy", "role");
 
     if (!event) {
       return res.status(404).json({ message: "Event not found." });
@@ -241,7 +245,11 @@ export async function getEventParticipants(req, res) {
 export async function updateParticipantStatus(req, res) {
   try {
     const { attendanceStatus, participationStatus, attendanceRemarks } = req.body;
-    const participant = await Participant.findById(req.params.id).populate("eventId", "createdBy title");
+    const participant = await Participant.findById(req.params.id).populate({
+      path: "eventId",
+      select: "createdBy title",
+      populate: { path: "createdBy", select: "role" }
+    });
 
     if (!participant) {
       return res.status(404).json({ message: "Participant record not found." });
@@ -406,7 +414,11 @@ export async function checkInEvent(req, res) {
 export async function verifyAttendance(req, res) {
   try {
     const participant = await Participant.findById(req.params.id)
-      .populate("eventId", "createdBy title")
+      .populate({
+        path: "eventId",
+        select: "createdBy title",
+        populate: { path: "createdBy", select: "role" }
+      })
       .populate("userId", "name email role");
 
     if (!participant) {
@@ -460,7 +472,7 @@ export async function verifyAttendance(req, res) {
 
 export async function exportParticipants(req, res) {
   try {
-    const event = await Event.findById(req.params.eventId);
+    const event = await Event.findById(req.params.eventId).populate("createdBy", "role");
     if (!event) return res.status(404).json({ message: "Event not found." });
     if (!canManageParticipant(req, event)) {
       return res.status(403).json({ message: "Staff can only export participants of their own events." });

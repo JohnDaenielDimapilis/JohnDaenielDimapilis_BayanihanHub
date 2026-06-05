@@ -144,6 +144,11 @@ function ensureStaffOwnsEvent(req, event, res) {
   return true;
 }
 
+function canViewEventQr(req, event) {
+  if (req.user.role === "Admin" || req.user.role === "Staff") return true;
+  return event.createdBy?.toString() === req.user._id.toString();
+}
+
 async function logEventChange(req, event, action, oldStatus, extra = {}) {
   await createLog({
     userId: req.user._id,
@@ -206,6 +211,17 @@ async function ensureCanReviewEvent(req, event, res) {
     return false;
   }
   return true;
+}
+
+async function ensureCanCorrectEvent(req, event, res) {
+  if (isOwnStaffEvent(req, event)) return true;
+  if (req.user.role === "Staff") {
+    const creatorId = event.createdBy?._id || event.createdBy;
+    const creator = await User.findById(creatorId).select("role");
+    if (creator?.role === "User") return true;
+  }
+  res.status(403).json({ message: "Staff can only correct their own events or user-created proposals." });
+  return false;
 }
 
 export async function createEvent(req, res) {
@@ -318,7 +334,7 @@ export async function updateEvent(req, res) {
       return res.status(404).json({ message: "Event not found." });
     }
 
-    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (!(await ensureCanCorrectEvent(req, event, res))) return;
 
     const editableStatuses = ["Draft", "Pending Review", "Rejected", "Approved"];
     if (!editableStatuses.includes(event.status)) {
@@ -838,7 +854,7 @@ export async function getEventQr(req, res) {
   try {
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: "Event not found." });
-    if (!ensureStaffOwnsEvent(req, event, res)) return;
+    if (!canViewEventQr(req, event)) return res.status(403).json({ message: "You cannot view this event QR code." });
     if (!event.qrCodeToken) return res.status(404).json({ message: "QR code has not been generated yet." });
 
     res.status(200).json({
